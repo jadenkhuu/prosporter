@@ -1,0 +1,268 @@
+{
+  "primary_nav": [
+    {
+      "id": "shorts-pants",
+      "slug": "shorts-pants",
+      "label": "Shorts & Pants",
+      "count": 34
+    },
+    {
+      "id": "tops",
+      "slug": "tops",
+      "label": "Tops",
+      "count": 21
+    },
+    {
+      "id": "hoodies-jackets",
+      "slug": "hoodies-jackets",
+      "label": "Hoodies & Jackets",
+      "count": 15
+    },
+    {
+      "id": "jerseys",
+      "slug": "jerseys",
+      "label": "Jerseys",
+      "count": 7
+    },
+    {
+      "id": "protective-gear",
+      "slug": "protective-gear",
+      "label": "Protective Gear",
+      "count": 6
+    },
+    {
+      "id": "accessories",
+      "slug": "accessories",
+      "label": "Accessories",
+      "count": 9
+    },
+    {
+      "id": "coaching",
+      "slug": "coaching",
+      "label": "Coaching",
+      "count": 2
+    }
+  ],
+  "collections": [
+    {
+      "id": "beach",
+      "slug": "beach",
+      "label": "Beach",
+      "type": "surface",
+      "count": 32
+    },
+    {
+      "id": "indoor",
+      "slug": "indoor",
+      "label": "Indoor",
+      "type": "surface",
+      "count": 9
+    },
+    {
+      "id": "provolley-academy",
+      "slug": "clubs/provolley-academy",
+      "label": "ProVolley Academy",
+      "type": "club",
+      "count": 19
+    },
+    {
+      "id": "inner-west-volley",
+      "slug": "clubs/inner-west-volley",
+      "label": "Inner West Volley",
+      "type": "club",
+      "count": 7
+    },
+    {
+      "id": "teamwear",
+      "slug": "clubs/teamwear",
+      "label": "Teamwear",
+      "type": "club",
+      "count": 4
+    },
+    {
+      "id": "new",
+      "slug": "new-arrivals",
+      "label": "New Arrivals",
+      "type": "dynamic",
+      "count": null
+    },
+    {
+      "id": "sale",
+      "slug": "sale",
+      "label": "Sale",
+      "type": "dynamic",
+      "count": 0
+    }
+  ],
+  "filters": [
+    {
+      "id": "gender",
+      "label": "Gender",
+      "type": "checkbox",
+      "values": [
+        {
+          "value": "unisex",
+          "count": 70
+        },
+        {
+          "value": "women",
+          "count": 24
+        },
+        {
+          "value": "men",
+          "count": 3
+        }
+      ]
+    },
+    {
+      "id": "surface",
+      "label": "Surface",
+      "type": "checkbox",
+      "values": [
+        {
+          "value": "beach",
+          "count": 32
+        },
+        {
+          "value": "indoor",
+          "count": 9
+        }
+      ]
+    },
+    {
+      "id": "colour",
+      "label": "Colour",
+      "type": "swatch",
+      "values": [
+        {
+          "value": "Navy",
+          "count": 30
+        },
+        {
+          "value": "Black",
+          "count": 30
+        },
+        {
+          "value": "White",
+          "count": 18
+        },
+        {
+          "value": "Yellow",
+          "count": 6
+        },
+        {
+          "value": "Grey",
+          "count": 5
+        },
+        {
+          "value": "Red",
+          "count": 3
+        },
+        {
+          "value": "Royal Blue",
+          "count": 1
+        },
+        {
+          "value": "Blue",
+          "count": 1
+        },
+        {
+          "value": "Orange",
+          "count": 1
+        },
+        {
+          "value": "Green",
+          "count": 1
+        },
+        {
+          "value": "Sky Blue",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "id": "size",
+      "label": "Size",
+      "type": "checkbox",
+      "values": [
+        {
+          "value": "4XS",
+          "count": 2
+        },
+        {
+          "value": "3XS",
+          "count": 7
+        },
+        {
+          "value": "2XS",
+          "count": 37
+        },
+        {
+          "value": "XS",
+          "count": 48
+        },
+        {
+          "value": "S",
+          "count": 65
+        },
+        {
+          "value": "M",
+          "count": 67
+        },
+        {
+          "value": "L",
+          "count": 70
+        },
+        {
+          "value": "XL",
+          "count": 68
+        },
+        {
+          "value": "2XL",
+          "count": 55
+        },
+        {
+          "value": "3XL",
+          "count": 43
+        },
+        {
+          "value": "S/M",
+          "count": 4
+        },
+        {
+          "value": "M/L",
+          "count": 4
+        }
+      ]
+    },
+    {
+      "id": "price",
+      "label": "Price",
+      "type": "range",
+      "min": 9.9,
+      "max": 219.95
+    },
+    {
+      "id": "availability",
+      "label": "Availability",
+      "type": "checkbox",
+      "values": [
+        {
+          "value": "in_stock",
+          "count": 89
+        },
+        {
+          "value": "on_sale",
+          "count": 0
+        }
+      ]
+    }
+  ],
+  "sort_options": [
+    "featured",
+    "price-asc",
+    "price-desc",
+    "newest",
+    "name-asc"
+  ]
+}
