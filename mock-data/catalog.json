@@ -2150,7 +2150,10 @@
     "on_sale": false,
     "in_stock": true,
     "image_local": "/products/knee-pads-spike.png",
-    "primary_category": "protective-gear",
+    "primary_category": "accessories",
+    "tags": [
+      "protective-gear"
+    ],
     "surface": "indoor",
     "clubs": [],
     "gender": [
@@ -2252,7 +2255,10 @@
     "on_sale": false,
     "in_stock": true,
     "image_local": "/products/knee-pads-sleek.png",
-    "primary_category": "protective-gear",
+    "primary_category": "accessories",
+    "tags": [
+      "protective-gear"
+    ],
     "surface": "indoor",
     "clubs": [],
     "gender": [
@@ -2455,7 +2461,10 @@
     "on_sale": false,
     "in_stock": true,
     "image_local": "/products/nine-knee-pads-new-shield.jpg",
-    "primary_category": "protective-gear",
+    "primary_category": "accessories",
+    "tags": [
+      "protective-gear"
+    ],
     "surface": "indoor",
     "clubs": [],
     "gender": [
@@ -2487,7 +2496,10 @@
     "on_sale": false,
     "in_stock": true,
     "image_local": "/products/arm-sleeves-net.png",
-    "primary_category": "protective-gear",
+    "primary_category": "accessories",
+    "tags": [
+      "protective-gear"
+    ],
     "surface": null,
     "clubs": [],
     "gender": [
@@ -2668,7 +2680,10 @@
     "on_sale": false,
     "in_stock": true,
     "image_local": "/products/elbow-pads.jpg",
-    "primary_category": "protective-gear",
+    "primary_category": "accessories",
+    "tags": [
+      "protective-gear"
+    ],
     "surface": "indoor",
     "clubs": [],
     "gender": [
@@ -2901,7 +2916,10 @@
     "on_sale": false,
     "in_stock": true,
     "image_local": "/products/arm-sleeves.jpg",
-    "primary_category": "protective-gear",
+    "primary_category": "accessories",
+    "tags": [
+      "protective-gear"
+    ],
     "surface": null,
     "clubs": [],
     "gender": [

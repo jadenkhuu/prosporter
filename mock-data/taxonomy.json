@@ -25,16 +25,10 @@
       "count": 7
     },
     {
-      "id": "protective-gear",
-      "slug": "protective-gear",
-      "label": "Protective Gear",
-      "count": 6
-    },
-    {
       "id": "accessories",
       "slug": "accessories",
       "label": "Accessories",
-      "count": 10
+      "count": 16
     }
   ],
   "collections": [

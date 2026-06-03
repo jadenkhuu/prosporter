@@ -19,6 +19,8 @@ export type Product = {
   sizes: string[];
   numeric_sizes: string[];
   original_categories: string[];
+  /** Extra classification tags kept for future filtering (e.g. "protective-gear"). */
+  tags?: string[];
 };
 
 type FacetValue = { value: string; count: number };
@@ -49,7 +51,6 @@ const NAV_ORDER = [
   "shorts-pants",
   "hoodies-jackets",
   "jerseys",
-  "protective-gear",
   "accessories",
 ];
 taxonomy.primary_nav.sort(
