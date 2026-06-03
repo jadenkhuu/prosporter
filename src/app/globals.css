@@ -1,26 +1,88 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+  ProSporter design tokens — derived from .moodboard
+  Muted, minimal, mid-dark. Ink + warm paper neutrals, forest green brand,
+  neon reserved as a sparing accent (never used for text on light surfaces).
+*/
+@theme {
+  --color-ink: #181817;
+  --color-ink-2: #2a2a28;
+  --color-paper: #ffffff;
+  --color-surface: #f4f4f0;
+  --color-surface-2: #e7eae3;
+  --color-line: #dde1d8;
+  --color-muted: #5b6157;
+  --color-subtle: #8c9286;
+
+  --color-green: #638d50;
+  --color-green-deep: #2d5817;
+  --color-green-deeper: #1f3f10;
+  --color-neon: #01d501;
+
+  --font-display: var(--font-archivo);
+  --font-sans: var(--font-inter);
+
+  --radius-card: 4px;
+  --tracking-label: 0.14em;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: var(--color-green-deep);
+    color: #fff;
+  }
+  *:focus-visible {
+    outline: 2px solid var(--color-green-deep);
+    outline-offset: 2px;
+    border-radius: 2px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  /* Small uppercase eyebrow / label */
+  .eyebrow {
+    font-family: var(--font-sans), sans-serif;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-label);
+    font-weight: 600;
+    font-size: 0.6875rem;
+  }
+  /* Athletic display heading */
+  .display {
+    font-family: var(--font-display), sans-serif;
+    font-weight: 800;
+    line-height: 0.95;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+  }
+}
+
+/* Horizontally scrollable strip with the scrollbar hidden (still scrollable/draggable). */
+.hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
