@@ -76,8 +76,8 @@ export function Header() {
           </Link>
 
           {/* Primary nav */}
-          <nav className="hidden flex-1 items-center gap-6 lg:flex">
-            {taxonomy.primary_nav.slice(0, 5).map((cat) => (
+          <nav className="hidden flex-1 items-center gap-5 lg:flex">
+            {taxonomy.primary_nav.map((cat) => (
               <Link
                 key={cat.id}
                 href={`/shop/${cat.id}`}

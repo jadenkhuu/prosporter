@@ -51,7 +51,6 @@ const NAV_ORDER = [
   "jerseys",
   "protective-gear",
   "accessories",
-  "coaching",
 ];
 taxonomy.primary_nav.sort(
   (a, b) => NAV_ORDER.indexOf(a.id) - NAV_ORDER.indexOf(b.id),

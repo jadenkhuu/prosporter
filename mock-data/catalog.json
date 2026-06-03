@@ -113,7 +113,7 @@
     "on_sale": false,
     "in_stock": true,
     "image_local": "/products/provolley-womens-polo-2026-27.jpg",
-    "primary_category": "coaching",
+    "primary_category": "tops",
     "surface": null,
     "clubs": [
       "provolley-academy"
@@ -769,7 +769,7 @@
     "on_sale": false,
     "in_stock": true,
     "image_local": "/products/coaching-board.webp",
-    "primary_category": "coaching",
+    "primary_category": "accessories",
     "surface": null,
     "clubs": [],
     "gender": [

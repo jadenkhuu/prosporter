@@ -10,7 +10,7 @@
       "id": "tops",
       "slug": "tops",
       "label": "Tops",
-      "count": 21
+      "count": 22
     },
     {
       "id": "hoodies-jackets",
@@ -34,13 +34,7 @@
       "id": "accessories",
       "slug": "accessories",
       "label": "Accessories",
-      "count": 9
-    },
-    {
-      "id": "coaching",
-      "slug": "coaching",
-      "label": "Coaching",
-      "count": 2
+      "count": 10
     }
   ],
   "collections": [

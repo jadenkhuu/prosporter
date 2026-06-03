@@ -85,28 +85,26 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {taxonomy.primary_nav
-            .filter((cat) => cat.id !== "coaching")
-            .map((cat) => (
-              <Link
-                key={cat.id}
-                href={`/shop/${cat.id}`}
-                className="group relative aspect-[4/5] overflow-hidden rounded-card bg-surface"
-              >
-                <Image
-                  src={categoryImage(cat.id)}
-                  alt={cat.label}
-                  fill
-                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-ink/75 via-ink/15 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 p-3">
-                  <h3 className="display text-sm leading-tight text-paper">{cat.label}</h3>
-                  <p className="mt-0.5 text-[11px] text-surface-2">{cat.count} items</p>
-                </div>
-              </Link>
-            ))}
+          {taxonomy.primary_nav.map((cat) => (
+            <Link
+              key={cat.id}
+              href={`/shop/${cat.id}`}
+              className="group relative aspect-[4/5] overflow-hidden rounded-card bg-surface"
+            >
+              <Image
+                src={categoryImage(cat.id)}
+                alt={cat.label}
+                fill
+                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+                className="object-cover transition-transform duration-500 group-hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-ink/75 via-ink/15 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 p-3">
+                <h3 className="display text-sm leading-tight text-paper">{cat.label}</h3>
+                <p className="mt-0.5 text-[11px] text-surface-2">{cat.count} items</p>
+              </div>
+            </Link>
+          ))}
         </div>
       </section>
 
