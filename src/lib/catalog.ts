@@ -66,18 +66,18 @@ export function getProductBySlug(slug: string): Product | undefined {
 }
 
 /**
- * "Most popular" line, mirroring the best-sellers carousel on prosporter.com.au.
- * Ordered as on the live site; missing slugs are skipped gracefully.
+ * "Most popular" line — a general apparel spread (jackets, hoodies, shirts,
+ * pants) for the homepage carousel. Missing slugs are skipped gracefully.
  */
 const POPULAR_SLUGS = [
-  "beach-volleyball-crop-top-osaka-river",
+  "provolley-brione-full-zip-track-jacket",
+  "baldo-hoodie",
+  "provolley-men-training-t-shirt-navy",
+  "nine-rain-jacket-nine",
   "provolley-premium-t-shirt-cinque-men",
-  "nago",
-  "beach-volley-shorts-tijuana-green",
-  "beach-volley-shorts-ibiza-white",
-  "beach-volley-womens-shorts-ibiza",
-  "beach-volley-mens-shorts-modena-volley",
-  "stivo-pants",
+  "provolley-winter-hoodie-2024",
+  "presser-polo-t-shirt",
+  "provolley-brione-track-pants",
 ];
 
 export function getPopularProducts(): Product[] {
