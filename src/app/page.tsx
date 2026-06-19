@@ -33,7 +33,7 @@ export default function Home() {
         {/* Green wash from the left to keep the copy legible */}
         <div className="pointer-events-none absolute inset-0 -z-[5] bg-gradient-to-r from-green-deeper/90 via-green-deeper/40 to-transparent" />
 
-        <div className="mx-auto grid max-w-[1400px] items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_minmax(0,500px)] lg:gap-12 lg:px-8 lg:py-24">
+        <div className="mx-auto grid max-w-7xl items-center gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_minmax(0,500px)] lg:gap-12 lg:px-8 lg:py-24">
           {/* Copy */}
           <div className="max-w-xl">
             <h1 className="display text-5xl italic leading-[0.92] sm:text-6xl lg:text-7xl">
