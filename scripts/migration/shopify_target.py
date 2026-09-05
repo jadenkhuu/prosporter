@@ -551,11 +551,12 @@ class ShopifyAdminTarget(FakeShopifyTarget):
         product_gid = self.gid("Product", p["product_handle"])
         if not product_gid:
             raise ShopifyAdminError(f"product {p['product_handle']} was not loaded; media skipped")
-        variant = None
-        if p.get("variant_sku"):
-            variant = next(
-                (v for v in self._variants(product_gid) if v.get("sku") == p["variant_sku"]), None
-            )
+        wanted_skus = list(p.get("variant_skus") or ([p["variant_sku"]] if p.get("variant_sku") else []))
+        variants_by_sku = {}
+        if wanted_skus:
+            for v in self._variants(product_gid):
+                if v.get("sku") in wanted_skus and v.get("sku") not in variants_by_sku:
+                    variants_by_sku[v["sku"]] = v
         if existing:
             # Alt text is the only mutable attribute we own; update it in place.
             if p.get("alt"):
@@ -585,13 +586,15 @@ class ShopifyAdminTarget(FakeShopifyTarget):
                 if len(new) != 1:
                     raise ShopifyAdminError(f"expected one new media object, saw {len(new)}")
                 media_gid = new.pop()
-        if p.get("variant_sku"):
+        for sku in wanted_skus:
+            variant = variants_by_sku.get(sku)
             if variant is None:
                 # The variant is held (not loaded) or its SKU changed: keep the image
                 # in the product gallery and surface the missing attachment.
                 self._warn("MediaImage", key,
-                           f"variant with sku {p['variant_sku']} not loaded; image kept in gallery, not attached")
+                           f"variant with sku {sku} not loaded; image kept in gallery, not attached")
             else:
+                # Runs on update too, so a payload that gained variants re-attaches.
                 self.deferred_variant_media.append((product_gid, variant["id"], media_gid, key))
         return media_gid
 

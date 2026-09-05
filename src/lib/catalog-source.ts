@@ -151,7 +151,17 @@ function metafieldDetails(metafields: Metafield[]): Record<string, string[]> {
 
 function toOptions(product: ShopifyProduct): CatalogOption[] {
   return product.options
-    .map((o) => ({ name: o.name, values: o.optionValues.map((v) => v.name) }))
+    .map((o) => {
+      const swatches: Record<string, string> = {};
+      for (const v of o.optionValues) {
+        if (v.swatch?.color) swatches[v.name] = v.swatch.color;
+      }
+      return {
+        name: o.name,
+        values: o.optionValues.map((v) => v.name),
+        ...(Object.keys(swatches).length ? { swatches } : {}),
+      };
+    })
     .filter((o) => o.values.length > 0 && !isDefaultOption(o));
 }
 

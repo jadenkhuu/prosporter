@@ -275,7 +275,7 @@ export function ProductDetail({ product }: { product: CatalogProductDetail }) {
                             ? "ring-2 ring-ink ring-offset-2 ring-offset-paper"
                             : "ring-1 ring-line hover:ring-muted"
                         } ${soldOut ? "opacity-40" : ""}`}
-                        style={{ background: swatchFor(value) }}
+                        style={{ background: option.swatches?.[value] ?? swatchFor(value) }}
                       />
                     </label>
                   ) : (

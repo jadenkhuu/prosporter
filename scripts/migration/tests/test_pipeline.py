@@ -767,5 +767,40 @@ class LiveDefinitionUpsert(unittest.TestCase):
                              sorted(rt for rt, _resource, _key in loader.LOAD_ORDER))
 
 
+class VariantImagePropagation(unittest.TestCase):
+    """A colour's photo reaches every size of that colour, own photos win."""
+
+    def test_colour_image_spreads_to_sizes_without_their_own(self):
+        class Ctx:
+            variations_by_parent = {
+                7: [
+                    {"id": 1, "sku": "S-BLK-S", "attributes": [{"name": "Colour", "option": "Black"}, {"name": "Size", "option": "S"}],
+                     "image": {"src": "https://x/black.png"}},
+                    {"id": 2, "sku": "S-BLK-M", "attributes": [{"name": "Colour", "option": "Black"}, {"name": "Size", "option": "M"}]},
+                    {"id": 3, "sku": "S-NVY-S", "attributes": [{"name": "Colour", "option": "Navy"}, {"name": "Size", "option": "S"}],
+                     "image": {"src": "https://x/navy.png"}},
+                    {"id": 4, "sku": "S-NVY-M", "attributes": [{"name": "Colour", "option": "Navy"}, {"name": "Size", "option": "M"}],
+                     "image": {"src": "https://x/navy-m.png"}},
+                    {"id": 5, "sku": "S-RED-S", "attributes": [{"name": "Colour", "option": "Red"}, {"name": "Size", "option": "S"}]},
+                ]
+            }
+        by_src = transform_mod._variant_images(Ctx(), 7)
+        self.assertEqual(by_src["https://x/black.png"], ["S-BLK-S", "S-BLK-M"])
+        self.assertEqual(by_src["https://x/navy.png"], ["S-NVY-S"])
+        self.assertEqual(by_src["https://x/navy-m.png"], ["S-NVY-M"])
+        self.assertNotIn("S-RED-S", sum(by_src.values(), []))  # no photo for red anywhere
+
+    def test_products_without_a_colour_option_only_use_own_images(self):
+        class Ctx:
+            variations_by_parent = {
+                8: [
+                    {"id": 1, "sku": "K-36", "attributes": [{"name": "Sock Size", "option": "36-41"}],
+                     "image": {"src": "https://x/sock.png"}},
+                    {"id": 2, "sku": "K-42", "attributes": [{"name": "Sock Size", "option": "42-46"}]},
+                ]
+            }
+        self.assertEqual(transform_mod._variant_images(Ctx(), 8), {"https://x/sock.png": ["K-36"]})
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -29,8 +29,30 @@ export const COLOUR_SWATCHES: Record<string, string> = {
   Orange: "#e8772e",
   Green: "#638d50",
   "Sky Blue": "#7fc4e8",
+  Pink: "#e58fb5",
+  Royal: "#2d57c4",
 };
 
+/**
+ * Fallback swatch for a colour name when Shopify has no swatch set on the
+ * option value. Two-tone names ("Black / Grey") render as a split disc.
+ * Unknown names get a neutral grey rather than guessing.
+ */
 export function swatchFor(colour: string): string {
-  return COLOUR_SWATCHES[colour] ?? "#c8ccc4";
+  const direct = COLOUR_SWATCHES[colour] ?? COLOUR_SWATCHES[titleCase(colour)];
+  if (direct) return direct;
+  const parts = colour.split("/").map((c) => c.trim()).filter(Boolean);
+  if (parts.length === 2) {
+    const [a, b] = parts.map((c) => COLOUR_SWATCHES[c] ?? COLOUR_SWATCHES[titleCase(c)]);
+    if (a && b) return `linear-gradient(135deg, ${a} 50%, ${b} 50%)`;
+  }
+  return "#c8ccc4";
+}
+
+function titleCase(value: string): string {
+  return value
+    .toLowerCase()
+    .split(" ")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
 }

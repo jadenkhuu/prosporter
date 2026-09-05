@@ -43,7 +43,12 @@ export type CatalogProduct = {
   createdAt: number;
 };
 
-export type CatalogOption = { name: string; values: string[] };
+export type CatalogOption = {
+  name: string;
+  values: string[];
+  /** Shopify option-value swatches (hex) keyed by value, when the merchant has set them. */
+  swatches?: Record<string, string>;
+};
 
 export type CatalogVariant = {
   id: string;

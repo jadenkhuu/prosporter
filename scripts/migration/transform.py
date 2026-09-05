@@ -622,15 +622,51 @@ def _variant_option_values(variation, option_names, value_maps):
     return values, missing
 
 
+COLOUR_ATTRIBUTE_NAMES = {"colour", "color", "pa_colour", "pa_color"}
+
+
+def _variation_colour(variation):
+    for attribute in variation.get("attributes") or []:
+        if clean_text(attribute.get("name")).lower() in COLOUR_ATTRIBUTE_NAMES:
+            return clean_text(attribute.get("option")) or None
+    return None
+
+
+def _variant_images(ctx, woo_id):
+    """src -> [variant SKUs] that should show that image.
+
+    WooCommerce lets a merchant put a photo on a single variation, so typically
+    only one size of each colour carries the colour's image and the other
+    sizes fall back to the product's first photo (often a different colour).
+    Propagate each colour's image to every variation of that colour that has
+    no image of its own; variations with their own image keep it.
+    """
+    variations = ctx.variations_by_parent.get(woo_id, [])
+    own_image, colour_of, sku_of = {}, {}, {}
+    for variation in variations:
+        sku_of[variation["id"]] = clean_text(variation.get("sku")) or N.generate_sku(woo_id, variation["id"])
+        colour_of[variation["id"]] = _variation_colour(variation)
+        src = (variation.get("image") or {}).get("src")
+        if src:
+            own_image[variation["id"]] = src
+    src_for_colour = {}
+    for variation in variations:
+        colour = colour_of[variation["id"]]
+        if colour and variation["id"] in own_image:
+            src_for_colour.setdefault(colour, own_image[variation["id"]])
+    by_src = {}
+    for variation in variations:
+        vid = variation["id"]
+        src = own_image.get(vid) or src_for_colour.get(colour_of[vid] or "")
+        if src:
+            by_src.setdefault(src, []).append(sku_of[vid])
+    return by_src
+
+
 def _product_images(ctx, product, handle, woo_id):
     images, seen = [], set()
-    variant_image_by_src = {}
-    for variation in ctx.variations_by_parent.get(woo_id, []):
-        image = variation.get("image") or {}
-        src = image.get("src")
-        if src:
-            variant_image_by_src.setdefault(src, clean_text(variation.get("sku")) or
-                                            N.generate_sku(woo_id, variation["id"]))
+    variant_skus_by_src = _variant_images(ctx, woo_id)
+    variant_image_by_src = {src: skus[0] for src, skus in variant_skus_by_src.items()}
 
     sources = list(product.get("images") or [])
     for variation in ctx.variations_by_parent.get(woo_id, []):
@@ -668,6 +704,7 @@ def _product_images(ctx, product, handle, woo_id):
             "alt": alt,
             "position": position,
             "variant_sku": variant_image_by_src.get(src),
+            "variant_skus": variant_skus_by_src.get(src, []),
             # The real checksum needs the bytes; the dry run hashes the URL so
             # reruns are stable and the field is shaped for the real loader.
             "checksum": {
