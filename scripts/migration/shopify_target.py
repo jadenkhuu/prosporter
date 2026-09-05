@@ -551,12 +551,29 @@ class ShopifyAdminTarget(FakeShopifyTarget):
         product_gid = self.gid("Product", p["product_handle"])
         if not product_gid:
             raise ShopifyAdminError(f"product {p['product_handle']} was not loaded; media skipped")
-        wanted_skus = list(p.get("variant_skus") or ([p["variant_sku"]] if p.get("variant_sku") else []))
-        variants_by_sku = {}
-        if wanted_skus:
-            for v in self._variants(product_gid):
-                if v.get("sku") in wanted_skus and v.get("sku") not in variants_by_sku:
-                    variants_by_sku[v["sku"]] = v
+        # Match variants by Woo variation id (unique) via the migration.woo_id
+        # metafield; fall back to SKU only for records without ids.
+        wanted = []
+        woo_ids = p.get("variant_woo_ids") or []
+        skus = list(p.get("variant_skus") or ([p["variant_sku"]] if p.get("variant_sku") else []))
+        for i, sku in enumerate(skus):
+            wanted.append({"woo_id": str(woo_ids[i]) if i < len(woo_ids) else None, "sku": sku})
+        resolved = {}  # variant gid -> ref (dedupes variants referenced twice)
+        unresolved = []
+        if wanted:
+            live = self._variants(product_gid)
+            by_woo = {(v.get("metafield") or {}).get("value"): v for v in live}
+            by_sku = {}
+            for v in live:
+                by_sku.setdefault(v.get("sku"), v)
+            for ref in wanted:
+                v = by_woo.get(ref["woo_id"]) if ref["woo_id"] else None
+                if v is None:
+                    v = by_sku.get(ref["sku"])
+                if v is None:
+                    unresolved.append(ref)
+                else:
+                    resolved.setdefault(v["id"], ref)
         if existing:
             # Alt text is the only mutable attribute we own; update it in place.
             if p.get("alt"):
@@ -586,16 +603,14 @@ class ShopifyAdminTarget(FakeShopifyTarget):
                 if len(new) != 1:
                     raise ShopifyAdminError(f"expected one new media object, saw {len(new)}")
                 media_gid = new.pop()
-        for sku in wanted_skus:
-            variant = variants_by_sku.get(sku)
-            if variant is None:
-                # The variant is held (not loaded) or its SKU changed: keep the image
-                # in the product gallery and surface the missing attachment.
-                self._warn("MediaImage", key,
-                           f"variant with sku {sku} not loaded; image kept in gallery, not attached")
-            else:
-                # Runs on update too, so a payload that gained variants re-attaches.
-                self.deferred_variant_media.append((product_gid, variant["id"], media_gid, key))
+        for ref in unresolved:
+            # The variant is held (not loaded) or its SKU changed: keep the image
+            # in the product gallery and surface the missing attachment.
+            self._warn("MediaImage", key,
+                       f"variant woo:{ref['woo_id']} sku {ref['sku']} not loaded; image kept in gallery, not attached")
+        for variant_gid in resolved:
+            # Runs on update too, so a payload that gained variants re-attaches.
+            self.deferred_variant_media.append((product_gid, variant_gid, media_gid, key))
         return media_gid
 
     def _attach_deferred_variant_media(self):
@@ -609,6 +624,11 @@ class ShopifyAdminTarget(FakeShopifyTarget):
                 by_product.setdefault(item[0], []).append(item)
             still = []
             for product_gid, items in by_product.items():
+                # One media per variant per batch: Shopify rejects duplicate variant ids.
+                first_by_variant = {}
+                for item in items:
+                    first_by_variant.setdefault(item[1], item)
+                items = list(first_by_variant.values())
                 data = self.client.graphql(
                     "query($id:ID!){ product(id:$id){ media(first:250){ nodes{ id status } } } }",
                     {"id": product_gid},

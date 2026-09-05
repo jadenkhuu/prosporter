@@ -6,7 +6,9 @@ import { HeroCarousel } from "@/components/home/HeroCarousel";
 import { HeroBackground } from "@/components/home/HeroBackground";
 import { ArrowRight } from "@/components/icons";
 
-const PLACEHOLDER = "/products/ace-unisex.png";
+const PLACEHOLDER = "/products/placeholder.svg";
+/** SVG placeholders bypass the image optimizer. */
+const unopt = (url: string) => url.endsWith(".svg");
 
 export default async function Home() {
   const { newArrivals, popular, categories, surfaces, clubs } = await getHomeCatalog();
@@ -80,6 +82,7 @@ export default async function Home() {
             >
               <Image
                 src={cat.image?.url ?? PLACEHOLDER}
+                unoptimized={unopt(cat.image?.url ?? PLACEHOLDER)}
                 alt={cat.image?.alt ?? cat.label}
                 fill
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
@@ -118,6 +121,7 @@ export default async function Home() {
               <div className="relative aspect-[16/9] overflow-hidden rounded-card bg-surface">
                 <Image
                   src={surface.image?.url ?? PLACEHOLDER}
+                unoptimized={unopt(surface.image?.url ?? PLACEHOLDER)}
                   alt={`${surface.label} collection`}
                   fill
                   sizes="(max-width: 768px) 100vw, 50vw"
@@ -173,6 +177,7 @@ export default async function Home() {
                   <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-card bg-surface">
                     <Image
                       src={club.image?.url ?? PLACEHOLDER}
+                unoptimized={unopt(club.image?.url ?? PLACEHOLDER)}
                       alt={club.label}
                       fill
                       sizes="64px"

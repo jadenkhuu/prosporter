@@ -128,8 +128,9 @@ export function ProductDetail({ product }: { product: CatalogProductDetail }) {
         <div className="relative aspect-[4/5] overflow-hidden rounded-card bg-surface">
           <Image
             src={hero?.url ?? PLACEHOLDER_IMAGE}
-            alt={hero?.alt || product.title}
+            alt={hero ? hero.alt || product.title : "No photo available yet"}
             fill
+            unoptimized={!hero}
             priority
             sizes="(max-width: 1024px) 100vw, 50vw"
             className="object-cover"

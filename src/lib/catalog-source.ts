@@ -57,8 +57,8 @@ export function catalogSource(): CatalogSource {
 }
 
 const FALLBACK_IMAGE: CatalogImage = {
-  url: "/products/ace-unisex.png",
-  alt: "ProSporter",
+  url: "/products/placeholder.svg",
+  alt: "Photo coming soon",
   width: null,
   height: null,
 };

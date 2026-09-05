@@ -34,9 +34,10 @@ export function HeroCarousel({ products }: { products: CatalogProduct[] }) {
               >
                 <div className="relative aspect-[4/5] overflow-hidden bg-surface">
                   <Image
-                    src={p.image?.url ?? "/products/ace-unisex.png"}
+                    src={p.image?.url ?? "/products/placeholder.svg"}
                     alt={p.image?.alt ?? p.title}
                     fill
+                    unoptimized={(p.image?.url ?? "/products/placeholder.svg").endsWith(".svg")}
                     sizes="160px"
                     className="object-cover transition-transform duration-500 group-hover/card:scale-105"
                   />

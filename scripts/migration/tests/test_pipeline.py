@@ -785,10 +785,11 @@ class VariantImagePropagation(unittest.TestCase):
                 ]
             }
         by_src = transform_mod._variant_images(Ctx(), 7)
-        self.assertEqual(by_src["https://x/black.png"], ["S-BLK-S", "S-BLK-M"])
-        self.assertEqual(by_src["https://x/navy.png"], ["S-NVY-S"])
-        self.assertEqual(by_src["https://x/navy-m.png"], ["S-NVY-M"])
-        self.assertNotIn("S-RED-S", sum(by_src.values(), []))  # no photo for red anywhere
+        self.assertEqual([r["sku"] for r in by_src["https://x/black.png"]], ["S-BLK-S", "S-BLK-M"])
+        self.assertEqual([r["woo_id"] for r in by_src["https://x/black.png"]], [1, 2])
+        self.assertEqual([r["sku"] for r in by_src["https://x/navy.png"]], ["S-NVY-S"])
+        self.assertEqual([r["sku"] for r in by_src["https://x/navy-m.png"]], ["S-NVY-M"])
+        self.assertNotIn("S-RED-S", [r["sku"] for refs in by_src.values() for r in refs])
 
     def test_products_without_a_colour_option_only_use_own_images(self):
         class Ctx:
@@ -799,7 +800,7 @@ class VariantImagePropagation(unittest.TestCase):
                     {"id": 2, "sku": "K-42", "attributes": [{"name": "Sock Size", "option": "42-46"}]},
                 ]
             }
-        self.assertEqual(transform_mod._variant_images(Ctx(), 8), {"https://x/sock.png": ["K-36"]})
+        self.assertEqual(transform_mod._variant_images(Ctx(), 8), {"https://x/sock.png": [{"woo_id": 1, "sku": "K-36"}]})
 
 
 if __name__ == "__main__":

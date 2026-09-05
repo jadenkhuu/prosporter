@@ -644,6 +644,7 @@ def _variant_images(ctx, woo_id):
     variations = ctx.variations_by_parent.get(woo_id, [])
     own_image, colour_of, sku_of = {}, {}, {}
     for variation in variations:
+        # Keyed by variation id because SKUs are not unique in the source.
         sku_of[variation["id"]] = clean_text(variation.get("sku")) or N.generate_sku(woo_id, variation["id"])
         colour_of[variation["id"]] = _variation_colour(variation)
         src = (variation.get("image") or {}).get("src")
@@ -659,14 +660,14 @@ def _variant_images(ctx, woo_id):
         vid = variation["id"]
         src = own_image.get(vid) or src_for_colour.get(colour_of[vid] or "")
         if src:
-            by_src.setdefault(src, []).append(sku_of[vid])
+            by_src.setdefault(src, []).append({"woo_id": vid, "sku": sku_of[vid]})
     return by_src
 
 
 def _product_images(ctx, product, handle, woo_id):
     images, seen = [], set()
-    variant_skus_by_src = _variant_images(ctx, woo_id)
-    variant_image_by_src = {src: skus[0] for src, skus in variant_skus_by_src.items()}
+    variant_refs_by_src = _variant_images(ctx, woo_id)
+    variant_image_by_src = {src: refs[0]["sku"] for src, refs in variant_refs_by_src.items()}
 
     sources = list(product.get("images") or [])
     for variation in ctx.variations_by_parent.get(woo_id, []):
@@ -704,7 +705,8 @@ def _product_images(ctx, product, handle, woo_id):
             "alt": alt,
             "position": position,
             "variant_sku": variant_image_by_src.get(src),
-            "variant_skus": variant_skus_by_src.get(src, []),
+            "variant_skus": [r["sku"] for r in variant_refs_by_src.get(src, [])],
+            "variant_woo_ids": [r["woo_id"] for r in variant_refs_by_src.get(src, [])],
             # The real checksum needs the bytes; the dry run hashes the URL so
             # reruns are stable and the field is shaped for the real loader.
             "checksum": {

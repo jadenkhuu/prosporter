@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000" width="800" height="1000" role="img" aria-label="Photo coming soon">
+  <rect width="800" height="1000" fill="#eef0ea"/>
+  <g fill="none" stroke="#d4d8cf" stroke-width="2">
+    <path d="M-50 720 C 150 640, 300 780, 500 700 S 800 620, 900 700"/>
+    <path d="M-50 790 C 150 710, 300 850, 500 770 S 800 690, 900 770"/>
+    <path d="M-50 860 C 150 780, 300 920, 500 840 S 800 760, 900 840"/>
+  </g>
+  <g transform="translate(400 430)" fill="none" stroke="#9aa0a6" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="-90" y="-70" width="180" height="140" rx="18"/>
+    <circle cx="-35" cy="-25" r="16"/>
+    <path d="M-80 50 L-20 -10 L25 35 L50 10 L90 50"/>
+  </g>
+  <text x="400" y="580" text-anchor="middle" font-family="Inter, Helvetica, Arial, sans-serif" font-size="30" font-weight="600" fill="#6b7280" letter-spacing="1">PHOTO COMING SOON</text>
+</svg>

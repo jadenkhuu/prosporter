@@ -8,7 +8,8 @@ import { useCart } from "@/components/cart/CartProvider";
 import { PlusIcon } from "@/components/icons";
 
 /** Shown when a product has no image yet (mid-migration drafts). */
-export const PLACEHOLDER_IMAGE = "/products/ace-unisex.png";
+/** Neutral tile for the ~40 products that have no photo in the source yet. */
+export const PLACEHOLDER_IMAGE = "/products/placeholder.svg";
 
 export function ProductCard({
   product,
@@ -48,6 +49,7 @@ export function ProductCard({
           src={product.image?.url ?? PLACEHOLDER_IMAGE}
           alt=""
           fill
+          unoptimized={!product.image}
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
           priority={priority}
           className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
