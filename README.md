@@ -1,4 +1,13 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ProSporter headless storefront
+
+This repository is strictly for the ProSporter ecommerce storefront, its WooCommerce-to-Shopify migration, and its headless Next.js frontend. It does not contain the other sites or deliverables from the wider client agreement.
+
+Project documentation:
+
+- [ProSporter Phase 2 schedule](./docs/prosporter-project-schedule.md)
+- [Shopify and Next.js migration execution plan](./docs/shopify-nextjs-migration-execution-plan.md)
+
+The application is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
 
