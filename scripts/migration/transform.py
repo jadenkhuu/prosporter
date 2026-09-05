@@ -404,6 +404,7 @@ def _build_variants(ctx, product, variations, options, handle, sku_owners):
     value_maps = {o["name"]: o["value_map"] for o in options}
     held_ids = []
     out = []
+    seen_combinations = {}  # option-combination -> first variation id
 
     if not variations:
         # Simple product: a single default variant.
@@ -459,6 +460,27 @@ def _build_variants(ctx, product, variations, options, handle, sku_owners):
             held_variant = True
             if variation_id not in held_ids:
                 held_ids.append(variation_id)
+
+        # Shopify allows one variant per option combination. A second Woo
+        # variation with the same combination would silently overwrite the first
+        # on load, so hold it and let the client pick which row survives.
+        combination = tuple((o["name"], o["value"]) for o in option_values)
+        if not missing and combination in seen_combinations:
+            exc.add(
+                record_type="variant", record_id=variation_id, record_ref=sku, stage=STAGE,
+                severity="high", code="duplicate_option_combination",
+                message=f"same option combination as variation {seen_combinations[combination]} "
+                        f"({', '.join(v for _, v in combination) or 'Default Title'}); Shopify "
+                        f"allows one variant per combination, so this row is held. Decide which "
+                        f"variation (SKU, stock) is authoritative",
+                owner=OWNER_CLIENT, retry_status="needs-decision",
+                detail={"product_handle": handle, "first_variation_id": seen_combinations[combination]},
+            )
+            held_variant = True
+            if variation_id not in held_ids:
+                held_ids.append(variation_id)
+        elif not missing:
+            seen_combinations[combination] = variation_id
 
         manage_stock = bool(variation.get("manage_stock")) or bool(product.get("manage_stock"))
         quantity = variation.get("stock_quantity")

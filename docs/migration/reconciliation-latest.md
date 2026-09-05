@@ -5,13 +5,13 @@ customers appear as counts, never as names or addresses.
 
 | Field | Value |
 |---|---|
-| Run id | `2026-09-05a` |
-| Generated | 2026-09-05T05:50:37+00:00 |
+| Run id | `live-full-1` |
+| Generated | 2026-09-05T07:39:25+00:00 |
 | Source snapshot | 2026-09-05T04:13:43.213180+00:00 |
 | Source directory | `exports` |
-| Target | `fake` |
+| Target | `shopify` |
 | Shopify API version | `2026-07` |
-| Pipeline commit | `62ee4010e0ef8e53a9093ff0fb5c749787d533fc` |
+| Pipeline commit | `0fef61b13f81a5ab75919ee66e8e57c8061d7f41` |
 
 **20 matched, 17 explained, 0 unexplained** out of 37 checks.
 
@@ -62,7 +62,7 @@ customers appear as counts, never as names or addresses.
 | Severity | Count |
 |---|---:|
 | critical | 8 |
-| high | 271 |
+| high | 389 |
 | medium | 66 |
 | low | 1505 |
 
@@ -74,6 +74,7 @@ customers appear as counts, never as names or addresses.
 | media_missing_alt | 350 |
 | sku_generated | 219 |
 | record_held_from_load | 190 |
+| load_failed | 118 |
 | customer_without_address | 95 |
 | variant_missing_option_value | 62 |
 | seo_description_missing | 55 |
@@ -107,12 +108,10 @@ Reasons: attribute_needs_decision (8), bundle_product (1)
 | Article | 15 |
 | Collection | 10 |
 | CollectionMembership | 10 |
-| Customer | 178 |
-| DiscountCodeNode | 5 |
 | InventoryItem | 782 |
-| MediaImage | 469 |
+| MediaImage | 352 |
 | Metafield | 394 |
 | MetafieldDefinition | 6 |
-| Page | 22 |
+| Page | 21 |
 | Product | 154 |
 | ProductVariant | 782 |
