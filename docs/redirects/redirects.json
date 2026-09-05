@@ -1,0 +1,682 @@
+[
+  {
+    "source": "/a-guide-to-choosing-the-right-sport-merchant",
+    "destination": "/blog/a-guide-to-choosing-the-right-sport-merchant",
+    "permanent": true
+  },
+  {
+    "source": "/authentic-brands",
+    "destination": "/blog/authentic-brands",
+    "permanent": true
+  },
+  {
+    "source": "/blog-2",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/category/blog",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/category/conditioner",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/category/gel",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/category/moisturizers",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/category/shaving",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/category/uncategorized",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/category/waxes",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/choosing-the-right-sport-merchant-for-your-needs",
+    "destination": "/blog/choosing-the-right-sport-merchant-for-your-needs",
+    "permanent": true
+  },
+  {
+    "source": "/collections",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/ethical-skin-care",
+    "destination": "/blog/ethical-skin-care",
+    "permanent": true
+  },
+  {
+    "source": "/everything-about-skin",
+    "destination": "/blog/everything-about-skin",
+    "permanent": true
+  },
+  {
+    "source": "/growing-categories",
+    "destination": "/blog/growing-categories",
+    "permanent": true
+  },
+  {
+    "source": "/hair-care-organic",
+    "destination": "/blog/hair-care-organic",
+    "permanent": true
+  },
+  {
+    "source": "/how-to-choose-the-right-sport-merchant-for-your-business",
+    "destination": "/blog/how-to-choose-the-right-sport-merchant-for-your-business",
+    "permanent": true
+  },
+  {
+    "source": "/how-to-choose-the-right-sport-merchant-for-your-needs",
+    "destination": "/blog/how-to-choose-the-right-sport-merchant-for-your-needs",
+    "permanent": true
+  },
+  {
+    "source": "/knee-pads",
+    "destination": "/shop/accessories",
+    "permanent": true
+  },
+  {
+    "source": "/latest-make-up-trends",
+    "destination": "/blog/latest-make-up-trends",
+    "permanent": true
+  },
+  {
+    "source": "/led-light-therapy",
+    "destination": "/blog/led-light-therapy",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/backpacks-bags",
+    "destination": "/shop/accessories",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/ball-cart-trolley",
+    "destination": "/shop/accessories",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/beach-volleyball",
+    "destination": "/shop/beach",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/beach-volleyball/bikini-bottoms",
+    "destination": "/shop/shorts-pants",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/beach-volleyball/singlets",
+    "destination": "/shop/tops",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/beach-volleyball/top-crop",
+    "destination": "/shop/tops",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/bikini-bottoms",
+    "destination": "/shop/shorts-pants",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/coaching",
+    "destination": "/shop/accessories",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/elbow-pads",
+    "destination": "/shop/accessories",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/hoodies",
+    "destination": "/shop/hoodies-jackets",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/inner-west-volley",
+    "destination": "/shop/clubs/inner-west-volley",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/jackets",
+    "destination": "/shop/hoodies-jackets",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/jerseys",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/kneepads",
+    "destination": "/shop/accessories",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/pants",
+    "destination": "/shop/shorts-pants",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/polo-shirts",
+    "destination": "/shop/tops",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/provolley-academy",
+    "destination": "/shop/clubs/provolley-academy",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/rain-jacket",
+    "destination": "/shop/hoodies-jackets",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/shorts",
+    "destination": "/shop/shorts-pants",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/singlets",
+    "destination": "/shop/tops",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/sleeves",
+    "destination": "/shop/accessories",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/socks",
+    "destination": "/shop/accessories",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/sweat-suit",
+    "destination": "/shop/hoodies-jackets",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/sweater",
+    "destination": "/shop/hoodies-jackets",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/t-shirts",
+    "destination": "/shop/tops",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/teamwear",
+    "destination": "/shop/clubs/teamwear",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/teamwear/inner-west-volley",
+    "destination": "/shop/clubs/inner-west-volley",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/teamwear/provolley-academy",
+    "destination": "/shop/clubs/provolley-academy",
+    "permanent": true
+  },
+  {
+    "source": "/product-category/top-crop",
+    "destination": "/shop/tops",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/auckland",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/australia",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/beach",
+    "destination": "/shop/beach",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/brisbane",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/custom-made-jersey",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/custom-volleyball-jersey",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/hoodie",
+    "destination": "/shop/hoodies-jackets",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/inner-west-volley",
+    "destination": "/shop/clubs/inner-west-volley",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/jersey",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/melbourne",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/men-volleyball-jersey",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/mens-volleyball-jersey",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/mens-volleyball-uniform",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/new-zealand",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/ninesquared-polo",
+    "destination": "/shop/tops",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/ninesquared-sweater",
+    "destination": "/shop/hoodies-jackets",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/nsw-volleyball",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/pants",
+    "destination": "/shop/shorts-pants",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/perth",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/provolley",
+    "destination": "/shop/clubs/provolley-academy",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/provolley-polo",
+    "destination": "/shop/clubs/provolley-academy",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/provolley-sweater",
+    "destination": "/shop/clubs/provolley-academy",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/queensland-volleyball",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/shorts",
+    "destination": "/shop/shorts-pants",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/socks",
+    "destination": "/shop/accessories",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/south-australia-volleyball",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/sportswear",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/svl-jersey",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/sydney",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/t-shirt",
+    "destination": "/shop/tops",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/teamwear",
+    "destination": "/shop/clubs/teamwear",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/teamwear-australia",
+    "destination": "/shop/clubs/teamwear",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/teamwear-new-zealand",
+    "destination": "/shop/clubs/teamwear",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/teamwear-volleyball",
+    "destination": "/shop/clubs/teamwear",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/unisex-volleyball-jumper",
+    "destination": "/shop/hoodies-jackets",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/victoria-volleyball",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-adelaide",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-apparel-australia",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-apparel-new-zealand",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-auckland",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-australia",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-brisbane",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-clothing-brisbane",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-clothing-melbourne",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-clothing-perth",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-clothing-sydney",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-jersey",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-jersey-australia",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-jersey-new-zealand",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-jersey-sydney",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-jumper-australia",
+    "destination": "/shop/hoodies-jackets",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-melbourne",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-perth",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-polo-australia",
+    "destination": "/shop/tops",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-polo-new-zealand",
+    "destination": "/shop/tops",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-sweater-australia",
+    "destination": "/shop/hoodies-jackets",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-sydney",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-teamwear",
+    "destination": "/shop/clubs/teamwear",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-training-sweater",
+    "destination": "/shop/hoodies-jackets",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-uniform",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/volleyball-uniform-australia",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/western-australia-volleyball",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/womens-volleyball-jersey",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product-tag/womens-volleyball-uniform",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product/inner-west-volley-mens-shorts-black-white",
+    "destination": "/product/inner-west-volley-men-shorts-black-white",
+    "permanent": true
+  },
+  {
+    "source": "/product/innerwestvolley-womens-jersey-black-white",
+    "destination": "/product/womens-volleyball-jersey-sydney-australia",
+    "permanent": true
+  },
+  {
+    "source": "/product/jump-socks-1-pair-pack",
+    "destination": "/product/nine-jump-socks-1-pair-pack",
+    "permanent": true
+  },
+  {
+    "source": "/product/knee-pads-new-shield",
+    "destination": "/product/nine-knee-pads-new-shield",
+    "permanent": true
+  },
+  {
+    "source": "/product/provolley-men-jersey-navy-white-yellow",
+    "destination": "/product/provolley-mens-volleyball-jersey-sydney",
+    "permanent": true
+  },
+  {
+    "source": "/product/provolley-mens-training-shorts",
+    "destination": "/product/provolley-men-old-style-shorts",
+    "permanent": true
+  },
+  {
+    "source": "/product/provolley-training-t-shirt-navy",
+    "destination": "/product/provolley-men-training-t-shirt-navy",
+    "permanent": true
+  },
+  {
+    "source": "/product/provolley-women-jersey-navy-white-yellow",
+    "destination": "/product/provolley-womens-volleyball-jersey-sydney-australia",
+    "permanent": true
+  },
+  {
+    "source": "/product/slide-man",
+    "destination": "/product/provolley-team-sweater-nine-unisex",
+    "permanent": true
+  },
+  {
+    "source": "/shop-sporter",
+    "destination": "/shop",
+    "permanent": true
+  },
+  {
+    "source": "/superfood-beauty",
+    "destination": "/blog/superfood-beauty",
+    "permanent": true
+  },
+  {
+    "source": "/tag/acrylic",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/tag/depilation",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/tag/kits",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/tag/nail",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/tag/paste",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/tag/polish",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/tag/preparations",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/tag/shades",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/tag/system",
+    "destination": "/blog",
+    "permanent": true
+  },
+  {
+    "source": "/the-benefits-of-shopping-at-a-sport-merchant",
+    "destination": "/blog/the-benefits-of-shopping-at-a-sport-merchant",
+    "permanent": true
+  },
+  {
+    "source": "/the-ultimate-guide-to-choosing-the-right-sport-merchant",
+    "destination": "/blog/the-ultimate-guide-to-choosing-the-right-sport-merchant",
+    "permanent": true
+  }
+]
