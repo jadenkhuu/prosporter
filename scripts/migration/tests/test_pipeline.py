@@ -426,7 +426,7 @@ class PublishPlanning(unittest.TestCase):
                                      "gid://shopify/Product/3"]))
             self.assertEqual(client.activated, ["gid://shopify/Product/2"])
             self.assertEqual(result["outcomes"],
-                             {"published": 2, "activated": 1, "unchanged": 1, "failed": 1})
+                             {"published": 3, "activated": 1, "unchanged": 1, "failed": 1})
             self.assertFalse(result["dry_run"])
             self.assertTrue((Path(tmp) / "ledger" / "publish-result.json").exists())
 

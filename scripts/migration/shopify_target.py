@@ -1156,6 +1156,7 @@ class ShopifyAdminTarget(FakeShopifyTarget):
                     item["error"] = message
                 else:
                     item["outcome"] = "published"
+                    item["published_now"] = True
 
         to_activate = [i for i in plan["items"]
                        if "activate" in i["actions"] and by_id[i["id"]].get("outcome") != "failed"]
@@ -1172,11 +1173,17 @@ class ShopifyAdminTarget(FakeShopifyTarget):
                     item["error"] = message
                 else:
                     item["outcome"] = "activated"
+                    item["activated_now"] = True
                     item["live_status"] = "ACTIVE"
 
-        outcomes = {"published": 0, "activated": 0, "unchanged": 0, "failed": 0}
-        for item in plan["items"]:
-            outcomes[item.get("outcome", "unchanged")] = outcomes.get(item.get("outcome", "unchanged"), 0) + 1
+        # An object can be both published and activated in one run, so count
+        # each action on its own rather than one label per object.
+        outcomes = {
+            "published": sum(1 for i in plan["items"] if i.get("published_now")),
+            "activated": sum(1 for i in plan["items"] if i.get("activated_now")),
+            "unchanged": sum(1 for i in plan["items"] if i.get("outcome", "unchanged") == "unchanged"),
+            "failed": sum(1 for i in plan["items"] if i.get("outcome") == "failed"),
+        }
         plan["outcomes"] = outcomes
         return plan
 
