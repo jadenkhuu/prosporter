@@ -43,3 +43,6 @@ next-env.d.ts
 .moodboard/
 # keep the template tracked
 !.env.example
+
+# raw migration exports (contain customer/order data)
+/exports/

@@ -1,0 +1,646 @@
+{
+  "snapshot": {
+    "started": "2026-09-05T04:04:04.464007+00:00",
+    "finished": "2026-09-05T04:13:43.213180+00:00",
+    "base": "https://prosporter.com.au"
+  },
+  "source": "https://prosporter.com.au",
+  "products": {
+    "total": 161,
+    "by_status": {
+      "publish": 141,
+      "draft": 20
+    },
+    "by_type": {
+      "variable": 155,
+      "simple": 5,
+      "easy_product_bundle": 1
+    },
+    "on_sale": 1,
+    "featured": 40,
+    "without_images": 44,
+    "with_yoast_title": 11,
+    "with_yoast_metadesc": 65,
+    "max_attributes": 4,
+    "tax_status": {
+      "taxable": 161
+    },
+    "tax_class": {
+      "standard": 161
+    },
+    "stock_status": {
+      "instock": 154,
+      "onbackorder": 1,
+      "outofstock": 6
+    },
+    "plugin_meta_keys": {
+      "qode_product_featured_image_size": 161,
+      "_yoast_wpseo_primary_product_cat": 161,
+      "_yoast_wpseo_estimated-reading-time-minutes": 161,
+      "_qode-like": 145,
+      "usbs_barcode_field": 131,
+      "_yoast_wpseo_content_score": 126,
+      "_monsterinsights_sitenote_active": 110,
+      "usbs_stock_location_level_1": 108,
+      "usbs_stock_location_level_2": 108,
+      "usbs_stock_location_level_3": 108,
+      "om_disable_all_campaigns": 108,
+      "_wpdesk_pdf_coupons": 100,
+      "_flexible_coupon_product_template": 100,
+      "_flexible_coupon_expiring_date": 100,
+      "_flexible_coupon_expiring_date_own": 100,
+      "_flexible_coupon_product_ids": 100,
+      "_flexible_coupon_product_categories": 100,
+      "_flexible_coupon_product_free_shipping": 100,
+      "saai_post_data_current_hash": 91,
+      "_yoast_wpseo_primary_product_brand": 87,
+      "rma_policies_product_refund_days": 85,
+      "rma_policies_product_exchange_days": 85,
+      "_yoast_indexnow_last_ping": 84,
+      "__product_coupon_import_id": 83,
+      "ced_connector_brand": 82,
+      "_yoast_wpseo_focuskeywords": 82,
+      "_yoast_wpseo_keywordsynonyms": 82,
+      "_aioseo_keywords": 79,
+      "_aioseo_og_article_tags": 79,
+      "_product_meta_id": 75,
+      "wpseo_global_identifier_values": 74,
+      "_yoast_wpseo_wordproof_timestamp": 66,
+      "_yoast_wpseo_metadesc": 65,
+      "_aioseo_og_article_section": 61,
+      "rs_page_bg_color": 37,
+      "_yoast_wpseo_focuskw": 32,
+      "_yoast_wpseo_linkdex": 32,
+      "_yoast_wpseo_title": 11,
+      "_yoast_post_redirect_info": 10,
+      "qode_product_list_masonry_layout": 10,
+      "usbs_found_counter": 7,
+      "_atum_attachments": 6,
+      "_yoast_wpseo_primary_atum_location": 6,
+      "_yoast_wpseo_bctitle": 5,
+      "_yoast_wpseo_opengraph-description": 3,
+      "ced_connector_gtin": 2,
+      "_yoast_wpseo_opengraph-title": 2,
+      "_items_is_in_stock": 1,
+      "_bundle_button_label": 1,
+      "_individual_theme": 1,
+      "_theme": 1,
+      "_theme_size": 1,
+      "_fixed_price": 1,
+      "_include_parent_price": 1,
+      "_hide_items_price": 1,
+      "_shipping_fee_calculation": 1,
+      "_sync_stock_quantity": 1,
+      "_loop_add_to_cart": 1,
+      "_items": 1,
+      "_custom_display_price": 1,
+      "_bundle_title": 1,
+      "_bundle_description": 1,
+      "woosb_disable_auto_price": 1,
+      "woosb_discount": 1,
+      "woosb_discount_amount": 1,
+      "woosb_shipping_fee": 1,
+      "woosb_manage_stock": 1,
+      "woosb_limit_whole_min": 1,
+      "woosb_limit_whole_max": 1,
+      "woosb_total_limits": 1,
+      "woosb_total_limits_min": 1,
+      "woosb_total_limits_max": 1,
+      "woosb_exclude_unpurchasable": 1,
+      "woosb_layout": 1,
+      "woosb_custom_price": 1,
+      "woosb_before_text": 1,
+      "woosb_after_text": 1,
+      "woosb_ids": 1,
+      "__product_views_count": 1,
+      "_yoast_wpseo_opengraph-image": 1,
+      "_yoast_wpseo_opengraph-image-id": 1
+    }
+  },
+  "variations": {
+    "total": 917,
+    "by_status": {
+      "publish": 916,
+      "private": 1
+    },
+    "with_sku": 698,
+    "unique_skus": 750,
+    "duplicate_skus": 11,
+    "with_image": 600,
+    "manage_stock": 799,
+    "total_stock_units": 6514,
+    "backorders": {
+      "notify": 285,
+      "no": 632
+    },
+    "with_sale_price": 0,
+    "with_weight": 196,
+    "max_per_product": 29,
+    "stock_status": {
+      "instock": 762,
+      "outofstock": 117,
+      "onbackorder": 38
+    }
+  },
+  "taxonomy": {
+    "product_categories": 25,
+    "product_tags": 75,
+    "brands": 1,
+    "global_attributes": [
+      "Color",
+      "Size"
+    ],
+    "attribute_values": {
+      "Colour": [
+        "Black",
+        "Blue",
+        "Navy",
+        "Navy Blue",
+        "Red",
+        "White",
+        "Yellow"
+      ],
+      "Color": [
+        "Black",
+        "Black / Gray",
+        "Blue",
+        "Gray",
+        "Green",
+        "Light Gray",
+        "Navy",
+        "Navy / Royal",
+        "Navy Blue",
+        "Orange",
+        "Pink",
+        "Red",
+        "Royal Blue",
+        "Sky Blue",
+        "White",
+        "Yellow"
+      ],
+      "Size": [
+        "2XL",
+        "2XS",
+        "36-39",
+        "36-41",
+        "3X",
+        "3XL",
+        "3XS",
+        "40-43",
+        "42-46",
+        "42-47",
+        "44-47",
+        "47-52",
+        "48-52",
+        "4XL",
+        "4XS",
+        "5XL",
+        "6XL",
+        "7XL",
+        "8XL",
+        "Kids 10",
+        "L",
+        "M",
+        "M/L",
+        "ML",
+        "S",
+        "S/M",
+        "SM",
+        "XL",
+        "XS"
+      ],
+      "Condition": [
+        "Defect",
+        "No Number",
+        "Returned",
+        "Used",
+        "With Surname",
+        "Without Surname"
+      ],
+      "Number": [
+        "1",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "2",
+        "20",
+        "21",
+        "26",
+        "29",
+        "3",
+        "4",
+        "42",
+        "43",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9"
+      ],
+      "Hats": [
+        "Unisex Hats",
+        "Unisex ProVolley Hats"
+      ],
+      "Gender": [
+        "Female",
+        "Male",
+        "Man",
+        "Men",
+        "Women"
+      ]
+    },
+    "shipping_classes": 0
+  },
+  "orders": {
+    "total": 896,
+    "by_status": {
+      "completed": 766,
+      "pending": 40,
+      "cancelled": 21,
+      "processing": 56,
+      "refunded": 9,
+      "failed": 3,
+      "return-approved": 1
+    },
+    "highest_id": 6864,
+    "lowest_id": 2394,
+    "first": "2024-02-12T12:40:57",
+    "last": "2026-09-01T01:17:58",
+    "open_at_snapshot": 96,
+    "guest_orders": 773,
+    "unique_guest_emails": 428,
+    "currencies": {
+      "AUD": 896
+    },
+    "payment_methods": {
+      "Credit / Debit Card": 437,
+      "(none)": 132,
+      "Cash (cashier)": 2,
+      "Other": 37,
+      "Link": 11,
+      "Credit Card (Stripe)": 214,
+      "Apple Pay (Stripe)": 15,
+      "Wallet Payment": 14,
+      "Google Pay (Stripe)": 2,
+      "Ezidebit credit/debit card.": 32
+    },
+    "refunds": 110,
+    "orders_with_refunds": 102,
+    "line_items": 2167,
+    "line_item_meta_keys": {
+      "size": 2107,
+      "_reduced_stock": 2049,
+      "colour": 1512,
+      "pa_color": 228,
+      "Backordered": 128,
+      "_ppom_fields": 126,
+      "_restock_refunded_items": 109,
+      "is_junior_team": 101,
+      "plays_senior": 96,
+      "confirmed_number": 92,
+      "if_provolley_player": 87,
+      "select_your_junior_team": 82,
+      "_asnp_wepb_price": 73,
+      "_asnp_wepb_hide_price": 72,
+      "_asnp_wepb_parent_id": 50,
+      "_asnp_wepb_parent_is_fixed_price": 50,
+      "gender": 42,
+      "if_inner_west_volley_player": 29,
+      "senior_team": 28,
+      "_asnp_wepb_items": 25,
+      "pa_size": 23,
+      "_asnp_wepb_is_fixed_price": 22,
+      "pref_1": 19,
+      "pref_2": 19,
+      "pref_3": 19,
+      "color": 15,
+      "last_name": 10,
+      "is_provolley_player": 10,
+      "number_confirmed": 7,
+      "is_u19": 6,
+      "external_number": 6,
+      "number": 4
+    },
+    "order_meta_keys": {
+      "_wc_order_attribution_source_type": 899,
+      "_wc_order_attribution_device_type": 731,
+      "_wc_order_attribution_session_count": 731,
+      "_wc_order_attribution_session_entry": 731,
+      "_wc_order_attribution_session_pages": 731,
+      "_wc_order_attribution_session_start_time": 731,
+      "_wc_order_attribution_user_agent": 731,
+      "_wc_order_attribution_utm_source": 731,
+      "is_vat_exempt": 701,
+      "_xlwcty_thankyou_page": 694,
+      "_googlesitekit_ga_purchase_event_tracked": 669,
+      "_stripe_customer_id": 660,
+      "_stripe_source_id": 660,
+      "_stripe_intent_id": 658,
+      "_stripe_charge_captured": 651,
+      "_stripe_currency": 616,
+      "_stripe_fee": 616,
+      "_stripe_net": 616,
+      "_stripe_upe_payment_type": 471,
+      "logic_results_storage": 466,
+      "_wc_order_attribution_referrer": 365,
+      "_shipping_athletes_svl_team_in_2025_if_applicable": 357,
+      "_shipping_enter_the_name_of_your_provolley_team_you_play_for": 218,
+      "_wc_order_attribution_utm_medium": 185,
+      "ex_left_amount": 108,
+      "wps_rma_exchange_req_date": 108,
+      "wps_rma_exchange_req_reason": 108,
+      "wps_rma_request_made": 108,
+      "wps_wrma_exchange_attachment": 108,
+      "wps_wrma_exchange_product": 108,
+      "wps_wrma_exchange_refund_method": 108,
+      "wps_wrma_left_amount": 108,
+      "wps_wrma_exchange_order": 106,
+      "new_order_id": 105,
+      "wps_rma_exchange_refund_items": 105,
+      "wps_rma_refund_items_details": 105,
+      "wps_wrma_manage_stock_for_exchange": 105,
+      "wps_rma_return_exchange_accept": 104,
+      "_wc_order_attribution_utm_content": 72,
+      "_before_customer_details_if_purchasing_a_jersey_select_up_to_3_preferred_numbers_subject_to_availability": 69,
+      "_before_customer_details_playing_category_division_in_2026_if_applicable": 69,
+      "_order_enter_3_preferred_jersey_numbers_subject_to_availability": 69,
+      "_om_revenue_attribution_data": 28,
+      "_wkezdbt_receipt_id": 26,
+      "_stripe_refund_id": 21,
+      "_stripe_lock_refund": 17,
+      "wf_order_exported_status": 13,
+      "_stripe_upe_waiting_for_redirect": 8,
+      "_debug_log_source_pending_deletion": 7,
+      "_wc_push_notification_claimed": 6,
+      "_wc_push_notification_sent": 6,
+      "wps_cutomer_order_msg": 6,
+      "wps_rma_return_exchange_cancel": 4,
+      "_shipping_email": 1,
+      "_shipping_e_mail": 1,
+      "_billing_athletes_svl_team_in_2025_if_applicable": 1,
+      "_shipping_athletes_team_if_applicable_in_2025": 1,
+      "_shipping_company_name": 1,
+      "_shipping_email_address": 1
+    },
+    "tracking_like_keys": [
+      "_googlesitekit_ga_purchase_event_tracked"
+    ]
+  },
+  "customers": {
+    "total": 182,
+    "by_role": {
+      "customer": 178,
+      "administrator": 4
+    },
+    "duplicate_emails": 0,
+    "without_address": 97,
+    "paying": 83,
+    "consent_like_meta_keys": [
+      "atum-marketing-dash",
+      "atum-marketing-popup",
+      "wpseo_seen_llm_txt_opt_in_notification"
+    ]
+  },
+  "coupons": {
+    "total": 5,
+    "by_type": {
+      "percent": 3,
+      "fixed_cart": 2
+    },
+    "active": 4,
+    "codes": [
+      {
+        "code": "xiamenuniform2026",
+        "type": "percent",
+        "amount": "20.00",
+        "uses": 11,
+        "expires": "2026-07-10T12:01:00",
+        "product_ids": 0,
+        "categories": 0,
+        "acfw_meta": [
+          "_acfw_enable_date_range_schedule",
+          "_acfw_schedule_end",
+          "_acfw_schedule_start"
+        ]
+      },
+      {
+        "code": "china2026",
+        "type": "fixed_cart",
+        "amount": "28.00",
+        "uses": 0,
+        "expires": null,
+        "product_ids": 2,
+        "categories": 0,
+        "acfw_meta": [
+          "_acfw_coupon_from_template_ID",
+          "_acfw_enable_date_range_schedule"
+        ]
+      },
+      {
+        "code": "japan_tour_2026",
+        "type": "percent",
+        "amount": "20.00",
+        "uses": 25,
+        "expires": null,
+        "product_ids": 0,
+        "categories": 0,
+        "acfw_meta": [
+          "_acfw_enable_date_range_schedule"
+        ]
+      },
+      {
+        "code": "aleksandra_kafarska_$12",
+        "type": "fixed_cart",
+        "amount": "12.00",
+        "uses": 0,
+        "expires": null,
+        "product_ids": 0,
+        "categories": 0,
+        "acfw_meta": [
+          "_acfw_coupon_from_template_ID"
+        ]
+      },
+      {
+        "code": "season2026",
+        "type": "percent",
+        "amount": "20.00",
+        "uses": 282,
+        "expires": null,
+        "product_ids": 0,
+        "categories": 0,
+        "acfw_meta": [
+          "_acfw_coupon_from_template_ID",
+          "_acfw_role_restrictions"
+        ]
+      }
+    ]
+  },
+  "shipping": [
+    {
+      "zone": "Locations not covered by your other zones",
+      "locations": [],
+      "methods": []
+    },
+    {
+      "zone": "Australia",
+      "locations": [
+        "AU"
+      ],
+      "methods": [
+        {
+          "title": "Free shipping",
+          "id": "free_shipping",
+          "enabled": true,
+          "cost": ""
+        },
+        {
+          "title": "Flat rate",
+          "id": "flat_rate",
+          "enabled": true,
+          "cost": "12"
+        },
+        {
+          "title": "Local pickup",
+          "id": "local_pickup",
+          "enabled": true,
+          "cost": ""
+        }
+      ]
+    },
+    {
+      "zone": "New Zealand",
+      "locations": [
+        "NZ"
+      ],
+      "methods": [
+        {
+          "title": "Flat rate",
+          "id": "flat_rate",
+          "enabled": true,
+          "cost": "25"
+        }
+      ]
+    }
+  ],
+  "tax": {
+    "rates": 0,
+    "classes": [
+      "Standard rate",
+      "Reduced rate",
+      "Zero rate"
+    ],
+    "prices_include_tax": "yes",
+    "calc_taxes": "yes"
+  },
+  "payment_gateways_enabled": [
+    "woocommerce_payments_apple_pay",
+    "woocommerce_payments_google_pay",
+    "stripe",
+    "payment_cash_cashier"
+  ],
+  "content": {
+    "pages": {
+      "publish": 27,
+      "draft": 3
+    },
+    "posts": {
+      "publish": 15
+    },
+    "authors": 2,
+    "post_categories": 7,
+    "post_tags": 9,
+    "users_total": 182,
+    "comments": 1,
+    "menus": [
+      "footer column 2",
+      "footer column 3",
+      "footer column 4",
+      "Menu 1",
+      "Menu main",
+      "Mobile menu",
+      "Quick links",
+      "Terms and policy"
+    ],
+    "menu_items": 27,
+    "cf7_forms": [
+      "Contact form 1",
+      "Newsletter",
+      "Contact Form 2"
+    ],
+    "shortcodes_used": {
+      "qode_wishlist_for_woocommerce_table": 2,
+      "woocommerce_my_account": 2,
+      "Remove": 2,
+      "products": 1,
+      "wpf-filters": 1,
+      "woocommerce_cart": 1
+    },
+    "elementor_pages": 26,
+    "internal_links": 23,
+    "duplicate_slug_suffix": [
+      "wishlist-2",
+      "1687-2",
+      "blog-2",
+      "my-account-2",
+      "checkout-2",
+      "cart-2"
+    ],
+    "yoast": {
+      "with_title": 45,
+      "with_description": 7,
+      "noindex": 0
+    }
+  },
+  "media": {
+    "attachments": 932,
+    "by_mime": {
+      "image/jpeg": 334,
+      "image/png": 581,
+      "application/pdf": 2,
+      "image/webp": 15
+    },
+    "missing_alt": 716,
+    "unreachable": 0,
+    "used_by_products": 455,
+    "total_bytes": 241784388
+  },
+  "urls": {
+    "sitemap_urls": 292,
+    "sitemaps": {
+      "post-sitemap.xml": 16,
+      "page-sitemap.xml": 23,
+      "product-sitemap.xml": 142,
+      "xlwcty_thankyou-sitemap.xml": 1,
+      "category-sitemap.xml": 6,
+      "post_tag-sitemap.xml": 9,
+      "carousels_category-sitemap.xml": 1,
+      "product_brand-sitemap.xml": 1,
+      "product_cat-sitemap.xml": 24,
+      "product_tag-sitemap.xml": 68,
+      "author-sitemap.xml": 1
+    },
+    "inventory_rows": 318
+  },
+  "data_quality": {
+    "rows": 1709,
+    "by_severity": {
+      "high": 482,
+      "medium": 108,
+      "info": 33,
+      "low": 1086
+    }
+  },
+  "discrepancies": {
+    "repo_mock_products": 94,
+    "public_store_api_products_2026_09_03": 141,
+    "authenticated_products": 161,
+    "authenticated_published": 141
+  }
+}
