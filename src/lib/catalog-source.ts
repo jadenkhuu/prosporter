@@ -48,6 +48,7 @@ import {
   type Product as ShopifyProduct,
   type ProductCard as ShopifyProductCard,
 } from "./shopify";
+import { searchProducts } from "./shopify/search";
 
 export type CatalogSource = "shopify" | "mock";
 
@@ -341,6 +342,60 @@ export async function getListing(segments: string[]): Promise<ListingScope | nul
     page.products.map(fromShopifyCard),
     page.collection.description || undefined,
   );
+}
+
+export type SearchSort = "relevance" | "price-asc" | "price-desc";
+
+export type SearchResults = {
+  query: string;
+  sort: SearchSort;
+  products: CatalogProduct[];
+  /** Total matches on the store; may exceed `products.length` on page one. */
+  total: number;
+};
+
+/** Fields the mock fallback matches on, lower-cased once per product. */
+function mockHaystack(p: MockProduct): string {
+  return [p.name, p.primary_category, p.surface ?? "", ...p.clubs, ...p.colours, ...p.gender]
+    .join(" ")
+    .toLowerCase();
+}
+
+/**
+ * Product search. Shopify mode delegates to the Storefront `search` query
+ * (relevance-ranked, cached — see `shopify/search.ts`); mock mode does a plain
+ * substring match over the mock catalog so `SHOPIFY_OPTIONAL=1` builds work.
+ *
+ * `shopify/search.ts` is imported directly rather than through `shopify/index`
+ * because index.ts is frozen for this slice; it is the same server-only layer.
+ */
+export async function searchCatalog(
+  rawQuery: string,
+  sort: SearchSort = "relevance",
+): Promise<SearchResults> {
+  const query = rawQuery.trim();
+  if (!query) return { query, sort, products: [], total: 0 };
+
+  if (catalogSource() === "mock") {
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const matches = mockCatalog
+      .filter((p) => {
+        const hay = mockHaystack(p);
+        return terms.every((t) => hay.includes(t));
+      })
+      .map(fromMockProduct);
+    const products =
+      sort === "relevance" ? matches : [...matches].sort((a, b) => a.price - b.price);
+    if (sort === "price-desc") products.reverse();
+    return { query, sort, products, total: products.length };
+  }
+
+  const results = await searchProducts(query, {
+    sort: sort === "relevance" ? "RELEVANCE" : "PRICE",
+    reverse: sort === "price-desc",
+  });
+  log.info("catalog.search", { query, count: results.products.length, total: results.totalCount });
+  return { query, sort, products: results.products.map(fromShopifyCard), total: results.totalCount };
 }
 
 export type ProductPage = { product: CatalogProductDetail; related: CatalogProduct[] };

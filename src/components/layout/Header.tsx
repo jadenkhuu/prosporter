@@ -6,7 +6,8 @@ import Image from "next/image";
 import { taxonomy } from "@/lib/catalog";
 import { useCart } from "@/components/cart/CartProvider";
 import { CartDrawer } from "@/components/cart/CartDrawer";
-import { BagIcon, MenuIcon, CloseIcon, SearchIcon } from "@/components/icons";
+import { BagIcon, MenuIcon, CloseIcon } from "@/components/icons";
+import { SearchDialog } from "@/components/search/SearchDialog";
 
 const collectionLinks = [
   { label: "New Arrivals", href: "/shop/new-arrivals" },
@@ -100,12 +101,7 @@ export function Header() {
 
           {/* Actions */}
           <div className="ml-auto flex items-center gap-1">
-            <button
-              aria-label="Search"
-              className="grid h-10 w-10 place-items-center rounded-full text-ink transition-colors hover:bg-surface"
-            >
-              <SearchIcon />
-            </button>
+            <SearchDialog />
             <button
               onClick={open}
               aria-label={`Open bag, ${count} items`}
