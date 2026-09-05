@@ -194,6 +194,7 @@ class EndToEnd(unittest.TestCase):
         return argparse.Namespace(
             stage="all", run_id=None, source=str(source), target="fake",
             store=str(store), no_docs=True, reset_store=False, fail_on_critical=False,
+            live=False, skip_types="", only_products="",
         )
 
     def test_rerun_creates_nothing_and_changes_nothing(self):
@@ -241,10 +242,53 @@ class EndToEnd(unittest.TestCase):
             # Nothing else moved.
             self.assertEqual(len(changed_keys), 4)
 
-    def test_shopify_admin_target_is_a_stub(self):
+    def test_live_target_needs_credentials_and_never_runs_by_default(self):
+        """The live target must refuse to build without Admin credentials and
+        must never be selected by a dry run (target defaults to fake)."""
         import loader
-        with self.assertRaises(NotImplementedError):
-            loader.build_target("shopify-admin", Path("/tmp/does-not-matter"))
+        import shopify_admin
+        import shopify_target
+        args = run_mod.parse_args(["all"])
+        self.assertEqual(args.target, "fake")
+        self.assertFalse(args.live)
+        with tempfile.TemporaryDirectory() as tmp:
+            empty_env = {"SHOPIFY_STORE_DOMAIN": "example.myshopify.com"}
+            with self.assertRaises(shopify_admin.ShopifyAdminError):
+                shopify_target.ShopifyAdminTarget(
+                    Path(tmp) / "ledger", client=shopify_admin.AdminClient(env=empty_env)
+                ).client.graphql("{ shop { name } }")
+            # The ledger refuses to mix stores.
+            target = shopify_target.ShopifyAdminTarget(
+                Path(tmp) / "ledger", client=shopify_admin.AdminClient(env=empty_env)
+            )
+            target._flush()
+            other = shopify_admin.AdminClient(env={"SHOPIFY_STORE_DOMAIN": "other.myshopify.com"})
+            with self.assertRaises(shopify_admin.ShopifyAdminError):
+                shopify_target.ShopifyAdminTarget(Path(tmp) / "ledger", client=other)
+
+    def test_only_products_filter_scopes_product_records(self):
+        import loader
+        with tempfile.TemporaryDirectory() as tmp:
+            args = self._args(FIXTURES, Path(tmp) / "store")
+            run_id = "filter"
+            run_dir = Path(tmp) / run_id
+            run_dir.mkdir()
+            result = self._run(args, run_id, run_dir)
+            handles = sorted(p["handle"] for p in result["records"]["products"] if not p.get("held"))
+            keep = handles[:1]
+            exc = ExceptionCollector()
+            target = loader.FakeShopifyTarget(Path(tmp) / "filtered")
+            out = loader.load(result["records"], target, exc, skip_types=["customers", "discounts"],
+                              only_products=keep)
+            products = [r for r in out["results"] if r["resource"] == "Product"]
+            self.assertEqual([r["key"] for r in products], keep)
+            self.assertFalse([r for r in out["results"] if r["resource"] in ("Customer", "DiscountCodeNode")])
+            for r in out["results"]:
+                if r["resource"] in ("ProductVariant", "MediaImage", "InventoryItem"):
+                    self.assertIn(r["key"], {r2["key"] for r2 in out["results"]})
+            variant_products = {v["product_handle"] for v in result["records"]["variants"]
+                                if f"woo:{v['source']['woo_id']}" in {r["key"] for r in out["results"] if r["resource"] == "ProductVariant"}}
+            self.assertEqual(variant_products, set(keep))
 
 
 if __name__ == "__main__":

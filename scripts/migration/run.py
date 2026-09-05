@@ -10,9 +10,15 @@ Stages: extract, transform, load, reconcile, all, prove.
 Every stage is restartable: each writes its output to
 exports/migration/<run-id>/ and later stages read it back from there.
 
-There is no Shopify store yet, so `--target fake` (the default) writes to a
-file-backed fake Admin API under exports/migration/fake-store/. `--target
-shopify-admin` deliberately raises NotImplementedError.
+`--target fake` (the default) writes to a file-backed fake Admin API under
+exports/migration/fake-store/ and makes no network calls. `--target shopify`
+loads into the client store through the Admin API and must be paired with
+`--live` (and a dedicated `--store` ledger directory). `--skip-types` and
+`--only-products` narrow a live load, e.g. a two-product smoke test:
+
+    python3 scripts/migration/run.py all --target shopify --live \
+        --store exports/migration/live-store --skip-types customers,discounts \
+        --only-products ace-unisex,nago --no-docs
 """
 from __future__ import annotations
 
@@ -68,6 +74,12 @@ def parse_args(argv=None):
                         help="exit 2 when the run ends with unresolved critical exceptions")
     parser.add_argument("--reset-store", action="store_true",
                         help="delete the fake store first (a from-scratch load)")
+    parser.add_argument("--live", action="store_true",
+                        help="required with --target shopify: confirms writes to the real store")
+    parser.add_argument("--skip-types", default="",
+                        help="comma-separated record types to leave out (e.g. customers,discounts)")
+    parser.add_argument("--only-products", default="",
+                        help="comma-separated product handles; restricts products and their variants/media/metafields")
     return parser.parse_args(argv)
 
 
@@ -113,8 +125,17 @@ def stage_load(records, exc, args, run_dir):
     store_dir = Path(args.store) if args.store else DEFAULT_STORE
     if args.reset_store and store_dir.exists():
         shutil.rmtree(store_dir)
+    if args.target != "fake":
+        if not args.live:
+            raise SystemExit("--target shopify writes to the real store; add --live to confirm")
+        if args.reset_store:
+            raise SystemExit("--reset-store only applies to the fake target; use shopify_target.py purge")
+        if store_dir == DEFAULT_STORE:
+            raise SystemExit("give the live load its own --store ledger directory (not the fake store)")
     target = loader_mod.build_target(args.target, store_dir)
-    result = loader_mod.load(records, target, exc)
+    skip_types = [t for t in args.skip_types.split(",") if t]
+    only_products = [h for h in args.only_products.split(",") if h] or None
+    result = loader_mod.load(records, target, exc, skip_types=skip_types, only_products=only_products)
     write_json(run_dir / "load-result.json", {
         "store_dir": rel(store_dir),
         "stats": result["stats"],
@@ -124,7 +145,7 @@ def stage_load(records, exc, args, run_dir):
     })
     stats = result["stats"]
     print(f"[load] created={stats['created']} updated={stats['updated']} "
-          f"unchanged={stats['unchanged']} -> {store_dir}")
+          f"unchanged={stats['unchanged']} failed={stats.get('failed', 0)} -> {store_dir}")
     return target, result
 
 

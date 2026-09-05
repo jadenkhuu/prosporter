@@ -209,19 +209,42 @@ def build_target(name: str, store_dir: Path) -> Target:
     if name == "fake":
         return FakeShopifyTarget(store_dir)
     if name in ("shopify", "shopify-admin"):
-        return ShopifyAdminTarget(store_dir)
+        # Imported lazily so the dry-run path never touches network code.
+        from shopify_target import ShopifyAdminTarget as LiveTarget
+        return LiveTarget(store_dir)
     raise ValueError(f"unknown target {name!r}")
 
 
-def load(records: dict, target: Target, exc) -> dict:
-    """Apply every record to the target in the plan's load order."""
+def load(records: dict, target: Target, exc, skip_types=(), only_products=None) -> dict:
+    """Apply every record to the target in the plan's load order.
+
+    ``skip_types`` names record types to leave out of this run (e.g. customers
+    until cutover). ``only_products`` restricts products and everything hanging
+    off them (variants, media, metafields, inventory, membership) to a set of
+    handles; it exists for smoke tests against the real store.
+    """
     results = []
+    skip = set(skip_types or ())
+    only = set(only_products) if only_products else None
     for record_type, resource, _key in LOAD_ORDER:
+        if record_type in skip:
+            continue
         for payload, key in _payloads(record_type, records, exc):
-            if payload is None:
+            if payload is None or not _selected(record_type, payload, only):
                 continue
             gid, outcome = target.upsert(resource, key, payload)
-            _index(target, record_type, payload, gid)
+            if outcome == "failed":
+                exc.add(
+                    record_type=record_type.rstrip("s"),
+                    record_id=(payload.get("source") or {}).get("woo_id"),
+                    record_ref=key,
+                    stage=STAGE, severity="high", code="load_failed",
+                    message=(target.failures[-1]["message"] if getattr(target, "failures", None) else "load failed"),
+                    owner=OWNER_AGENCY, retry_status="auto-retryable",
+                    detail={"resource": resource},
+                )
+            else:
+                _index(target, record_type, payload, gid)
             results.append({
                 "record_type": record_type,
                 "resource": resource,
@@ -236,6 +259,22 @@ def load(records: dict, target: Target, exc) -> dict:
         "per_resource": getattr(target, "per_resource", {}),
         "object_counts": target.counts(),
     }
+
+
+def _selected(record_type, payload, only):
+    """Apply the --only-products handle filter to product-scoped record types."""
+    if only is None:
+        return True
+    if record_type == "products":
+        return payload.get("handle") in only
+    if record_type in ("variants", "variants_inventory", "media"):
+        return payload.get("product_handle") in only
+    if record_type == "metafields":
+        return payload.get("owner_type") != "PRODUCT" or payload.get("owner_handle") in only
+    if record_type == "collection_membership":
+        payload["product_handles"] = [h for h in payload.get("product_handles", []) if h in only]
+        return True
+    return True
 
 
 def _index(target, record_type, payload, gid):
@@ -269,6 +308,7 @@ def _payloads(record_type, records, exc):
                     "quantity": variant["inventory_quantity"],
                     "policy": variant["inventory_policy"],
                     "requires_shipping": variant["requires_shipping"],
+                    "product_handle": variant["product_handle"],
                     "source": variant["source"],
                 },
                 f"woo:{variant['source']['woo_id']}",

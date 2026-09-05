@@ -196,6 +196,48 @@ Store facts recorded 2026-09-05: internal domain `ihuvab-u2.myshopify.com`, prim
 `gid://shopify/Location/118425878893`), Headless publication "ProSporter Dev"
 (`gid://shopify/Publication/327884112237`), no products, no product metafield definitions.
 
+### Live target (`shopify_target.py`)
+
+`ShopifyAdminTarget` is the real loader. It reuses the fake target's ledger (`store.json`,
+`mapping.json`) so reruns are diffed locally and an unchanged record costs no API call, and
+it resolves natural keys on the store (handle, code, email, `migration.woo_id`, option
+values) before creating anything, so a fresh checkout cannot duplicate objects. Products are
+created `DRAFT` and are not published to any channel. Failures are per record: they land in
+`<store>/failures.json` and in the exception register as `load_failed`, and the record is
+retried on the next run because it never entered the ledger.
+
+```bash
+# smoke test: two products, nothing customer-facing
+python3 scripts/migration/run.py all --target shopify --live \
+    --store exports/migration/live-store --skip-types customers,discounts,pages,articles \
+    --only-products ace-unisex,nago --no-docs
+# staging reset: delete everything the ledger created (dry run without --yes)
+python3 scripts/migration/shopify_target.py purge --store exports/migration/live-store --yes
+# QA only: make one product visible to the Headless storefront
+python3 scripts/migration/shopify_admin.py publish --handle nago --publication "ProSporter Dev" --activate
+```
+
+`--live` is mandatory for `--target shopify`, `--reset-store` is refused for it, and the
+live ledger must not be the fake-store directory. The ledger records the store domain and
+refuses to run against a different store.
+
+2026-07 Admin API behaviour the loader depends on (verified on the client store, 5 Sep 2026):
+
+| Concern | What 2026-07 does | What the loader does |
+|---|---|---|
+| Collection membership | no `collectionAddProducts`; `CollectionInput` has no `products` | `productCreate/productUpdate(collectionsToJoin/collectionsToLeave)`; removals only for products in the ledger |
+| Variants | `productVariantsBulkCreate` with `REMOVE_STANDALONE_VARIANT` deletes the *only* existing variant on every single-variant call | strategy `DEFAULT`; the auto-created variant is matched by option values or pruned in `finish()` if no source variant claimed it |
+| Inventory | `inventorySetQuantities` requires `changeFromQuantity` and the `@idempotent(key:)` directive | reads the current available quantity, skips when equal, otherwise compare-and-sets with a UUIDv5 key derived from the exact change |
+| Customer addresses | `CustomerInput` has no `addresses` | `customerAddressCreate` / `customerAddressUpdate(setAsDefault:true)` |
+| Discounts | `customerSelection` replaced by `context: {all: ALL}` | as documented; category-restricted, excluded-product and free-shipping-plus-value coupons are failed with a decision message |
+| Product media | `productUpdate(media:[...])`; variant images via `productVariantsBulkUpdate(mediaId)` once media is `READY` | one image per call, id found by diffing the product's media list; variant images attached in `finish()` after polling (90 s cap) |
+| Page/article SEO | no `seo` on page/article inputs | `global.title_tag` / `global.description_tag` metafields |
+
+Smoke test result (run `live-smoke-4`): 70 objects (6 definitions, 10 collections, 2
+products, 13 variants, 12 media, 13 inventory items, 10 memberships, 4 metafields), 0
+failures; rerun 70 unchanged / 0 created. Note the store's default `frontpage` collection is
+automated and picked up Ace Unisex by tag; the client decides whether to keep it.
+
 ## Normalization decisions applied automatically
 
 1. `Color` and `Colour` merge into one `Colour` option.

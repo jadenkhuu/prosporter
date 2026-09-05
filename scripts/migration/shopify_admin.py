@@ -19,6 +19,8 @@ ever written to the cache file with mode 0600.
 CLI:
   python3 scripts/migration/shopify_admin.py doctor   # scopes, locations, publications
   python3 scripts/migration/shopify_admin.py token    # refresh the cached token (prints expiry only)
+  python3 scripts/migration/shopify_admin.py publish --handle nago --publication "ProSporter Dev" --activate
+                                                      # QA helper: make one product visible to a Headless storefront
 """
 from __future__ import annotations
 
@@ -300,11 +302,50 @@ def doctor(env: dict | None = None) -> dict:
     return summary
 
 
+def publish_product(handle: str, publication_name: str, activate: bool, env: dict | None = None) -> dict:
+    """Publish one product to a named publication (the Headless storefront) and
+    optionally set it ACTIVE. This is a QA step outside the pipeline: the load
+    itself never publishes, so this is the only place a product changes status."""
+    client = AdminClient(env)
+    data = client.graphql(
+        "query($h:String!){ productByIdentifier(identifier:{handle:$h}){ id status }"
+        " publications(first:20){ nodes{ id name } } }", {"h": handle},
+    )
+    product = data.get("productByIdentifier")
+    if not product:
+        raise ShopifyAdminError(f"no product with handle {handle!r}")
+    publication = next((n for n in data["publications"]["nodes"] if n["name"] == publication_name), None)
+    if not publication:
+        names = [n["name"] for n in data["publications"]["nodes"]]
+        raise ShopifyAdminError(f"no publication named {publication_name!r}; have {names}")
+    if activate and product["status"] != "ACTIVE":
+        client.mutate(
+            "mutation($p:ProductUpdateInput!){ productUpdate(product:$p){ product{ id } userErrors{ field message } } }",
+            {"p": {"id": product["id"], "status": "ACTIVE"}}, "productUpdate",
+        )
+    client.mutate(
+        "mutation($id:ID!,$i:[PublicationInput!]!){ publishablePublish(id:$id, input:$i){"
+        " publishable{ availablePublicationsCount{ count } } userErrors{ field message } } }",
+        {"id": product["id"], "i": [{"publicationId": publication["id"]}]}, "publishablePublish",
+    )
+    return {"handle": handle, "product_id": product["id"], "publication": publication["name"],
+            "status": "ACTIVE" if activate else product["status"]}
+
+
 def main(argv: list[str]) -> int:
     command = argv[1] if len(argv) > 1 else "doctor"
     try:
         if command == "doctor":
             print(json.dumps(doctor(), indent=2))
+            return 0
+        if command == "publish":
+            import argparse
+            parser = argparse.ArgumentParser(prog="shopify_admin.py publish")
+            parser.add_argument("--handle", required=True)
+            parser.add_argument("--publication", default="ProSporter Dev")
+            parser.add_argument("--activate", action="store_true", help="also set the product ACTIVE")
+            args = parser.parse_args(argv[2:])
+            print(json.dumps(publish_product(args.handle, args.publication, args.activate), indent=2))
             return 0
         if command == "token":
             record = mint_token(load_env())

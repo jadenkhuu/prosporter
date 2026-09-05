@@ -31,7 +31,8 @@ Do not add, plan, or document unrelated marketing sites, club sites, CMS project
 
 - The storefront never uses the Admin API. Admin access lives in the migration scripts and is minted per run from `SHOPIFY_ADMIN_CLIENT_ID` / `SHOPIFY_ADMIN_CLIENT_SECRET` (client credentials grant, 24h tokens, cached under `exports/migration/`). Never paste a `shpat_` token into code, docs, Linear or git.
 - `python3 scripts/migration/shopify_admin.py doctor` must pass (all required scopes granted) before any load against the real store. Store facts it reports: internal domain `ihuvab-u2.myshopify.com` (primary `prosporter.myshopify.com`), location "Shop location", Headless publication "ProSporter Dev".
-- Admin API version is pinned with the Storefront version (`2026-07`, `SHOPIFY_API_VERSION` in `scripts/migration/common.py`).
+- Admin API version is pinned with the Storefront version (`2026-07`, `SHOPIFY_API_VERSION` in `scripts/migration/common.py`). Several 2026-07 input shapes differ from older docs (collections, inventory, customer addresses, discounts); `docs/migration/README.md` has the verified table. Introspect the live schema before adding a mutation.
+- `run.py --target shopify` requires `--live` and its own `--store` ledger. Never point a live load at `exports/migration/fake-store`. Products load as DRAFT; only `shopify_admin.py publish` changes status, and only for QA.
 
 # Local checks (Actions minutes are limited)
 
