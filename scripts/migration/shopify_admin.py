@@ -20,7 +20,8 @@ CLI:
   python3 scripts/migration/shopify_admin.py doctor   # scopes, locations, publications
   python3 scripts/migration/shopify_admin.py token    # refresh the cached token (prints expiry only)
   python3 scripts/migration/shopify_admin.py publish --handle nago --publication "ProSporter Dev" --activate
-                                                      # QA helper: make one product visible to a Headless storefront
+  python3 scripts/migration/shopify_admin.py publish --collection accessories --publication "ProSporter Dev"
+                                                      # QA helpers: expose one product / collection to a Headless storefront
 """
 from __future__ import annotations
 
@@ -302,34 +303,43 @@ def doctor(env: dict | None = None) -> dict:
     return summary
 
 
-def publish_product(handle: str, publication_name: str, activate: bool, env: dict | None = None) -> dict:
-    """Publish one product to a named publication (the Headless storefront) and
-    optionally set it ACTIVE. This is a QA step outside the pipeline: the load
-    itself never publishes, so this is the only place a product changes status."""
+def publish_product(handle: str, publication_name: str, activate: bool, env: dict | None = None,
+                    kind: str = "product") -> dict:
+    """Publish one product or collection to a named publication (the Headless
+    storefront); ``activate`` also sets a product ACTIVE. This is a QA step
+    outside the pipeline: the load itself never publishes, so this is the only
+    place a product changes status. Storefront API indexing lags ~1 minute."""
     client = AdminClient(env)
-    data = client.graphql(
-        "query($h:String!){ productByIdentifier(identifier:{handle:$h}){ id status }"
-        " publications(first:20){ nodes{ id name } } }", {"h": handle},
-    )
-    product = data.get("productByIdentifier")
-    if not product:
-        raise ShopifyAdminError(f"no product with handle {handle!r}")
+    if kind == "collection":
+        data = client.graphql(
+            "query($h:String!){ collectionByIdentifier(identifier:{handle:$h}){ id }"
+            " publications(first:20){ nodes{ id name } } }", {"h": handle},
+        )
+        node = data.get("collectionByIdentifier")
+    else:
+        data = client.graphql(
+            "query($h:String!){ productByIdentifier(identifier:{handle:$h}){ id status }"
+            " publications(first:20){ nodes{ id name } } }", {"h": handle},
+        )
+        node = data.get("productByIdentifier")
+    if not node:
+        raise ShopifyAdminError(f"no {kind} with handle {handle!r}")
     publication = next((n for n in data["publications"]["nodes"] if n["name"] == publication_name), None)
     if not publication:
         names = [n["name"] for n in data["publications"]["nodes"]]
         raise ShopifyAdminError(f"no publication named {publication_name!r}; have {names}")
-    if activate and product["status"] != "ACTIVE":
+    if kind == "product" and activate and node["status"] != "ACTIVE":
         client.mutate(
             "mutation($p:ProductUpdateInput!){ productUpdate(product:$p){ product{ id } userErrors{ field message } } }",
-            {"p": {"id": product["id"], "status": "ACTIVE"}}, "productUpdate",
+            {"p": {"id": node["id"], "status": "ACTIVE"}}, "productUpdate",
         )
     client.mutate(
         "mutation($id:ID!,$i:[PublicationInput!]!){ publishablePublish(id:$id, input:$i){"
         " publishable{ availablePublicationsCount{ count } } userErrors{ field message } } }",
-        {"id": product["id"], "i": [{"publicationId": publication["id"]}]}, "publishablePublish",
+        {"id": node["id"], "i": [{"publicationId": publication["id"]}]}, "publishablePublish",
     )
-    return {"handle": handle, "product_id": product["id"], "publication": publication["name"],
-            "status": "ACTIVE" if activate else product["status"]}
+    return {"kind": kind, "handle": handle, "id": node["id"], "publication": publication["name"],
+            **({"status": "ACTIVE" if activate else node["status"]} if kind == "product" else {})}
 
 
 def main(argv: list[str]) -> int:
@@ -341,11 +351,17 @@ def main(argv: list[str]) -> int:
         if command == "publish":
             import argparse
             parser = argparse.ArgumentParser(prog="shopify_admin.py publish")
-            parser.add_argument("--handle", required=True)
+            group = parser.add_mutually_exclusive_group(required=True)
+            group.add_argument("--handle", help="product handle")
+            group.add_argument("--collection", help="collection handle")
             parser.add_argument("--publication", default="ProSporter Dev")
             parser.add_argument("--activate", action="store_true", help="also set the product ACTIVE")
             args = parser.parse_args(argv[2:])
-            print(json.dumps(publish_product(args.handle, args.publication, args.activate), indent=2))
+            if args.collection:
+                out = publish_product(args.collection, args.publication, False, kind="collection")
+            else:
+                out = publish_product(args.handle, args.publication, args.activate)
+            print(json.dumps(out, indent=2))
             return 0
         if command == "token":
             record = mint_token(load_env())
