@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { resolveScope, buildFacets, taxonomy } from "@/lib/catalog";
+import { getListing, getListingParams } from "@/lib/catalog-source";
 import { Listing } from "@/components/shop/Listing";
 
 type Params = { segments?: string[] };
@@ -12,20 +12,14 @@ export async function generateMetadata({
   params: Promise<Params>;
 }): Promise<Metadata> {
   const { segments = [] } = await params;
-  const scope = resolveScope(segments);
+  const scope = await getListing(segments);
   if (!scope) return { title: "Not found · ProSporter" };
-  return { title: `${scope.title} · ProSporter` };
+  return { title: `${scope.title} · ProSporter`, description: scope.description };
 }
 
-// Pre-render the known category, surface and club listings.
-export function generateStaticParams(): Params[] {
-  const params: Params[] = [{ segments: [] }];
-  for (const cat of taxonomy.primary_nav) params.push({ segments: [cat.id] });
-  for (const col of taxonomy.collections) {
-    if (col.type === "club") params.push({ segments: ["clubs", col.id] });
-    else params.push({ segments: [col.slug] });
-  }
-  return params;
+/** Empty when Shopify is unconfigured or unreachable; those routes render on demand. */
+export async function generateStaticParams(): Promise<Params[]> {
+  return (await getListingParams()).map((segments) => ({ segments }));
 }
 
 export default async function ShopPage({
@@ -34,10 +28,8 @@ export default async function ShopPage({
   params: Promise<Params>;
 }) {
   const { segments = [] } = await params;
-  const scope = resolveScope(segments);
+  const scope = await getListing(segments);
   if (!scope) notFound();
-
-  const facets = buildFacets(scope.products);
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
@@ -80,7 +72,7 @@ export default async function ShopPage({
           </Link>
         </div>
       ) : (
-        <Listing products={scope.products} facets={facets} />
+        <Listing products={scope.products} facets={scope.facets} />
       )}
     </div>
   );

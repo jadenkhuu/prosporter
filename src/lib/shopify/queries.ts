@@ -116,7 +116,7 @@ export const CART_BUYER_IDENTITY_UPDATE = /* GraphQL */ `
 
 export const CART_DISCOUNT_CODES_UPDATE = /* GraphQL */ `
   ${CART_FRAGMENTS}
-  mutation CartDiscountCodesUpdate($cartId: ID!, $discountCodes: [String!]) {
+  mutation CartDiscountCodesUpdate($cartId: ID!, $discountCodes: [String!]!) {
     cartDiscountCodesUpdate(cartId: $cartId, discountCodes: $discountCodes) { cart { ...Cart } ${CART_USER_ERRORS} }
   }
 `;

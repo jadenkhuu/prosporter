@@ -66,10 +66,13 @@ export type ProductCard = {
   vendor: string;
   productType: string;
   tags: string[];
+  createdAt: string;
   availableForSale: boolean;
   featuredImage: Image | null;
   priceRange: { minVariantPrice: Money; maxVariantPrice: Money };
   compareAtPriceRange: { minVariantPrice: Money; maxVariantPrice: Money };
+  /** First two variants only: enough to tell a single-variant product apart. */
+  quickAddVariants: { edges: { node: { id: string; availableForSale: boolean } }[] };
   options: ProductOption[];
 };
 
@@ -77,7 +80,6 @@ export type Product = ProductCard & {
   description: string;
   descriptionHtml: string;
   totalInventory: number | null;
-  createdAt: string;
   updatedAt: string;
   seo: Seo;
   images: Connection<Image>;

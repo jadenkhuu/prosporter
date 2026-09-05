@@ -6,6 +6,16 @@ export function formatPrice(amount: number, currency = "AUD"): string {
   }).format(amount);
 }
 
+/**
+ * Price label for a product whose variants span a range. Collapses to a single
+ * price when min and max match, which is the common case.
+ */
+export function formatPriceRange(min: number, max: number, currency = "AUD"): string {
+  return max > min
+    ? `${formatPrice(min, currency)} – ${formatPrice(max, currency)}`
+    : formatPrice(min, currency);
+}
+
 /** Map a colour name to a swatch fill. Falls back to a neutral grey. */
 export const COLOUR_SWATCHES: Record<string, string> = {
   Navy: "#1f2a44",

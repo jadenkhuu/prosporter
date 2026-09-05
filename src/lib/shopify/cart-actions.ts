@@ -23,10 +23,9 @@ import {
   isShopifyConfigured,
   isShopifyError,
   removeCartLines,
+  updateCartDiscountCodes,
   updateCartLines,
 } from "@/lib/shopify";
-// See cart.ts: index.ts's updateCartDiscountCodes is unusable on API 2026-07.
-import { updateCartDiscountCodesFixed } from "@/lib/shopify/cart";
 import type { Cart } from "@/lib/shopify/types";
 import { errorFields, log } from "@/lib/log";
 
@@ -239,7 +238,7 @@ export async function applyDiscountCode(code: string): Promise<CartActionResult>
   const cartId = await readCartId();
   if (!cartId) return { cart: null, error: "Add something to your bag first.", enabled: true };
   try {
-    const cart = await updateCartDiscountCodesFixed(cartId, trimmed ? [trimmed] : []);
+    const cart = await updateCartDiscountCodes(cartId, trimmed ? [trimmed] : []);
     const applied = cart.discountCodes.some((d) => d.applicable);
     log.info("cart.discount_updated", { requestId, op: "applyDiscountCode", applied });
     if (trimmed && !applied) {

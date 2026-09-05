@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { Facets } from "@/lib/catalog";
+import type { Facets } from "@/lib/catalog-view";
 import { swatchFor } from "@/lib/format";
 import { formatPrice } from "@/lib/format";
 import { ChevronDown, CheckIcon } from "@/components/icons";

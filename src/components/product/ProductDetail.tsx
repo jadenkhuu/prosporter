@@ -2,10 +2,14 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import type { Product } from "@/lib/catalog";
-import { getCategoryLabel } from "@/lib/catalog";
-import { formatPrice, swatchFor } from "@/lib/format";
+import {
+  findVariant,
+  isSizeOption,
+  type CatalogProductDetail,
+} from "@/lib/catalog-view";
+import { formatPrice, formatPriceRange, swatchFor } from "@/lib/format";
 import { useCart } from "@/components/cart/CartProvider";
+import { PLACEHOLDER_IMAGE } from "@/components/product/ProductCard";
 import { CheckIcon, ChevronDown } from "@/components/icons";
 
 function Accordion({ title, children }: { title: string; children: React.ReactNode }) {
@@ -29,25 +33,50 @@ function Accordion({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
-export function ProductDetail({ product }: { product: Product }) {
-  const { add } = useCart();
-  const hasSizes = product.sizes.length > 0;
-  const [size, setSize] = useState<string | null>(null);
+export function ProductDetail({ product }: { product: CatalogProductDetail }) {
+  const { add, addVariant, isPending } = useCart();
+  const [selection, setSelection] = useState<Record<string, string>>({});
+  // Null until the shopper picks a thumbnail; a variant image wins until then.
+  const [pickedImage, setPickedImage] = useState<number | null>(null);
   const [added, setAdded] = useState(false);
   const [error, setError] = useState(false);
 
+  const variant = findVariant(product, selection);
+  const needsSelection = product.options.length > 0;
+  const complete = product.options.every((o) => selection[o.name]);
+  const images = product.images.length ? product.images : product.image ? [product.image] : [];
+  const hero =
+    (pickedImage === null ? variant?.image : null) ?? images[pickedImage ?? 0] ?? images[0] ?? null;
+
+  const price = variant?.price ?? product.price;
+  const compareAt = variant?.compareAtPrice ?? product.compareAtPrice;
+  const inStock = variant ? variant.available : product.inStock;
+  const sizeOption = product.options.find((o) => isSizeOption(o.name));
+
+  const choose = (option: string, value: string) => {
+    setSelection((s) => ({ ...s, [option]: value }));
+    setPickedImage(null);
+    setError(false);
+  };
+
   const handleAdd = () => {
-    if (hasSizes && !size) {
+    if (needsSelection && !complete) {
       setError(true);
       return;
     }
-    add({
-      slug: product.slug,
-      name: product.name,
-      price: product.price,
-      image: product.image_local,
-      size,
-    });
+    const variantId = variant?.id ?? product.variantId;
+    if (variantId) {
+      addVariant(variantId);
+    } else {
+      // Mock catalog: no Shopify variant to add, so the drawer shim runs.
+      add({
+        slug: product.handle,
+        name: product.title,
+        price,
+        image: hero?.url ?? PLACEHOLDER_IMAGE,
+        size: product.options.map((o) => selection[o.name]).filter(Boolean).join(" / ") || null,
+      });
+    }
     setAdded(true);
     setTimeout(() => setAdded(false), 1600);
   };
@@ -55,28 +84,56 @@ export function ProductDetail({ product }: { product: Product }) {
   return (
     <div className="grid gap-8 lg:grid-cols-2 lg:gap-14">
       {/* Gallery */}
-      <div className="relative aspect-[4/5] overflow-hidden rounded-card bg-surface">
-        <Image
-          src={product.image_local}
-          alt={product.name}
-          fill
-          priority
-          sizes="(max-width: 1024px) 100vw, 50vw"
-          className="object-cover"
-        />
-        {product.on_sale && (
-          <span className="absolute left-4 top-4 rounded-full bg-green-deep px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-paper">
-            Sale
-          </span>
+      <div>
+        <div className="relative aspect-[4/5] overflow-hidden rounded-card bg-surface">
+          <Image
+            src={hero?.url ?? PLACEHOLDER_IMAGE}
+            alt={hero?.alt ?? product.title}
+            fill
+            priority
+            sizes="(max-width: 1024px) 100vw, 50vw"
+            className="object-cover"
+          />
+          {product.onSale && (
+            <span className="absolute left-4 top-4 rounded-full bg-green-deep px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-paper">
+              Sale
+            </span>
+          )}
+        </div>
+        {images.length > 1 && (
+          <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
+            {images.map((img, i) => (
+              <button
+                key={img.url}
+                onClick={() => setPickedImage(i)}
+                aria-label={`View image ${i + 1}`}
+                aria-pressed={hero?.url === img.url}
+                className={`relative aspect-[4/5] w-20 shrink-0 overflow-hidden rounded-card bg-surface ring-inset transition-all ${
+                  hero?.url === img.url ? "ring-2 ring-ink" : "ring-1 ring-line hover:ring-muted"
+                }`}
+              >
+                <Image src={img.url} alt="" fill sizes="80px" className="object-cover" />
+              </button>
+            ))}
+          </div>
         )}
       </div>
 
       {/* Info */}
       <div className="lg:py-2">
-        <p className="eyebrow text-subtle">{getCategoryLabel(product.primary_category)}</p>
-        <h1 className="mt-2 display text-3xl sm:text-4xl">{product.name}</h1>
-        <p className="mt-4 text-2xl font-semibold tabular-nums">
-          {formatPrice(product.price)}
+        <p className="eyebrow text-subtle">{product.categoryLabel}</p>
+        <h1 className="mt-2 display text-3xl sm:text-4xl">{product.title}</h1>
+        <p className="mt-4 flex items-baseline gap-3 text-2xl font-semibold tabular-nums">
+          <span>
+            {variant
+              ? formatPrice(price, product.currency)
+              : formatPriceRange(product.price, product.maxPrice, product.currency)}
+          </span>
+          {compareAt != null && compareAt > price && (
+            <span className="text-base font-normal text-subtle line-through">
+              {formatPrice(compareAt, product.currency)}
+            </span>
+          )}
         </p>
 
         {/* Tags */}
@@ -87,7 +144,7 @@ export function ProductDetail({ product }: { product: Product }) {
             </span>
           )}
           {product.gender
-            .filter((g) => g !== "unisex")
+            .filter((g) => g.toLowerCase() !== "unisex")
             .map((g) => (
               <span
                 key={g}
@@ -98,114 +155,131 @@ export function ProductDetail({ product }: { product: Product }) {
             ))}
           <span
             className={`rounded-full px-3 py-1 text-xs font-medium ${
-              product.in_stock
-                ? "bg-green-deep/10 text-green-deep"
-                : "bg-surface-2 text-muted"
+              inStock ? "bg-green-deep/10 text-green-deep" : "bg-surface-2 text-muted"
             }`}
           >
-            {product.in_stock ? "In stock" : "Sold out"}
+            {inStock ? "In stock" : "Sold out"}
           </span>
         </div>
 
-        {/* Colours */}
-        {product.colours.length > 0 && (
-          <div className="mt-6">
-            <p className="eyebrow mb-2 text-ink">
-              Colour <span className="text-subtle">· {product.colours.join(", ")}</span>
-            </p>
-            <div className="flex gap-2">
-              {product.colours.map((c) => (
-                <span
-                  key={c}
-                  title={c}
-                  className="h-8 w-8 rounded-full ring-1 ring-line ring-inset"
-                  style={{ background: swatchFor(c) }}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Sizes */}
-        {hasSizes && (
-          <div className="mt-6">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="eyebrow text-ink">Size</p>
-              <button className="text-xs text-muted underline-offset-2 hover:text-ink hover:underline">
-                Size guide
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {product.sizes.map((s) => {
-                const active = size === s;
-                return (
-                  <button
-                    key={s}
-                    onClick={() => {
-                      setSize(s);
-                      setError(false);
-                    }}
-                    aria-pressed={active}
-                    className={`min-w-[52px] rounded-md border px-3 py-2.5 text-sm font-medium transition-colors ${
-                      active
-                        ? "border-ink bg-ink text-paper"
-                        : "border-line bg-paper text-ink hover:border-muted"
-                    }`}
-                  >
-                    {s}
+        {/* Options — a simple product has none and shows no selector */}
+        {product.options.map((option) => {
+          const swatches = product.colours.length > 0 && option.values.every((v) => product.colours.includes(v));
+          return (
+            <div key={option.name} className="mt-6">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="eyebrow text-ink">
+                  {option.name}
+                  {selection[option.name] && (
+                    <span className="text-subtle"> · {selection[option.name]}</span>
+                  )}
+                </p>
+                {isSizeOption(option.name) && (
+                  <button className="text-xs text-muted underline-offset-2 hover:text-ink hover:underline">
+                    Size guide
                   </button>
-                );
-              })}
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {option.values.map((value) => {
+                  const active = selection[option.name] === value;
+                  return swatches ? (
+                    <button
+                      key={value}
+                      onClick={() => choose(option.name, value)}
+                      title={value}
+                      aria-label={value}
+                      aria-pressed={active}
+                      className={`h-8 w-8 rounded-full ring-inset transition-all ${
+                        active
+                          ? "ring-2 ring-ink ring-offset-2 ring-offset-paper"
+                          : "ring-1 ring-line hover:ring-muted"
+                      }`}
+                      style={{ background: swatchFor(value) }}
+                    />
+                  ) : (
+                    <button
+                      key={value}
+                      onClick={() => choose(option.name, value)}
+                      aria-pressed={active}
+                      className={`min-w-[52px] rounded-md border px-3 py-2.5 text-sm font-medium transition-colors ${
+                        active
+                          ? "border-ink bg-ink text-paper"
+                          : "border-line bg-paper text-ink hover:border-muted"
+                      }`}
+                    >
+                      {value}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            {error && (
-              <p role="alert" className="mt-2 text-xs font-medium text-[#c0392b]">
-                Please select a size before adding to bag.
-              </p>
-            )}
-          </div>
+          );
+        })}
+        {error && (
+          <p role="alert" className="mt-2 text-xs font-medium text-[#c0392b]">
+            Please choose {product.options.map((o) => o.name.toLowerCase()).join(" and ")} before
+            adding to bag.
+          </p>
         )}
 
         {/* Add to cart */}
         <button
           onClick={handleAdd}
-          disabled={!product.in_stock}
+          disabled={!inStock || isPending}
           className={`mt-7 flex w-full items-center justify-center gap-2 rounded-full px-6 py-4 text-sm font-semibold transition-colors ${
-            !product.in_stock
+            !inStock
               ? "cursor-not-allowed bg-surface-2 text-subtle"
               : added
                 ? "bg-green-deep text-paper"
                 : "bg-ink text-paper hover:bg-ink-2"
           }`}
         >
-          {!product.in_stock ? (
+          {!inStock ? (
             "Sold out"
+          ) : isPending ? (
+            "Adding…"
           ) : added ? (
             <>
               <CheckIcon width={18} height={18} /> Added to bag
             </>
           ) : (
-            `Add to bag · ${formatPrice(product.price)}`
+            `Add to bag · ${formatPrice(price, product.currency)}`
           )}
         </button>
 
         {/* Details */}
         <div className="mt-8">
           <Accordion title="Product details">
-            <p>
-              {product.name} from the ProSporter range. Performance volleyball
-              apparel designed for {product.surface ?? "training and match"} play,
-              built to move with you and hold up season after season.
-            </p>
+            {product.descriptionHtml ? (
+              <div
+                className="product-description"
+                dangerouslySetInnerHTML={{ __html: product.descriptionHtml }}
+              />
+            ) : (
+              <p>{product.description || product.seo.description || product.title}</p>
+            )}
           </Accordion>
+          {product.details.personalisation && (
+            <Accordion title="Personalisation">
+              {product.details.personalisation.join(", ")}
+            </Accordion>
+          )}
           <Accordion title="Shipping &amp; returns">
             Free standard shipping on orders over $150. Easy 30-day returns on
             unworn items with tags attached. Checkout is securely completed on
             prosporter.com.au.
           </Accordion>
           <Accordion title="Sizing">
-            Available sizes:{" "}
-            {hasSizes ? product.sizes.join(", ") : "One size"}. Not sure? Check the
-            size guide above or get in touch with the team.
+            {product.details.size_guide ? (
+              product.details.size_guide.join(" ")
+            ) : (
+              <>
+                Available sizes:{" "}
+                {sizeOption ? sizeOption.values.join(", ") : "One size"}. Not sure? Check the size
+                guide above or get in touch with the team.
+              </>
+            )}
           </Accordion>
         </div>
       </div>

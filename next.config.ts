@@ -12,6 +12,17 @@ import legacyRedirects from "./docs/redirects/redirects.json";
 type Redirect = { source: string; destination: string; permanent: boolean };
 
 const nextConfig: NextConfig = {
+  images: {
+    // Shopify serves every product image from its CDN; nothing else is allowed.
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "cdn.shopify.com",
+        port: "",
+        pathname: "/s/files/**",
+      },
+    ],
+  },
   async redirects(): Promise<Redirect[]> {
     return legacyRedirects satisfies Redirect[];
   },

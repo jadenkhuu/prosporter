@@ -1,28 +1,15 @@
 import Link from "next/link";
 import Image from "next/image";
-import { catalog, taxonomy, byNewest, getPopularProducts } from "@/lib/catalog";
+import { getHomeCatalog } from "@/lib/catalog-source";
 import { ProductCard } from "@/components/product/ProductCard";
 import { HeroCarousel } from "@/components/home/HeroCarousel";
 import { HeroBackground } from "@/components/home/HeroBackground";
 import { ArrowRight } from "@/components/icons";
 
-// Pick a representative image for a category (first in-stock product).
-function categoryImage(catId: string): string {
-  const p =
-    catalog.find((x) => x.primary_category === catId && x.in_stock) ??
-    catalog.find((x) => x.primary_category === catId);
-  return p?.image_local ?? "/products/ace-unisex.png";
-}
+const PLACEHOLDER = "/products/ace-unisex.png";
 
-function surfaceImage(surface: "beach" | "indoor"): string {
-  const p = catalog.find((x) => x.surface === surface);
-  return p?.image_local ?? "/products/ace-unisex.png";
-}
-
-export default function Home() {
-  const newArrivals = byNewest(catalog).slice(0, 8);
-  const clubs = taxonomy.collections.filter((c) => c.type === "club");
-  const popular = getPopularProducts();
+export default async function Home() {
+  const { newArrivals, popular, categories, surfaces, clubs } = await getHomeCatalog();
 
   return (
     <div>
@@ -85,15 +72,15 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {taxonomy.primary_nav.map((cat) => (
+          {categories.map((cat) => (
             <Link
               key={cat.id}
-              href={`/shop/${cat.id}`}
+              href={cat.href}
               className="group relative aspect-[4/5] overflow-hidden rounded-card bg-surface"
             >
               <Image
-                src={categoryImage(cat.id)}
-                alt={cat.label}
+                src={cat.image?.url ?? PLACEHOLDER}
+                alt={cat.image?.alt ?? cat.label}
                 fill
                 sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
                 className="object-cover transition-transform duration-500 group-hover:scale-105"
@@ -101,7 +88,9 @@ export default function Home() {
               <div className="absolute inset-0 bg-gradient-to-t from-ink/75 via-ink/15 to-transparent" />
               <div className="absolute inset-x-0 bottom-0 p-3">
                 <h3 className="display text-sm leading-tight text-paper">{cat.label}</h3>
-                <p className="mt-0.5 text-[11px] text-surface-2">{cat.count} items</p>
+                {cat.count != null && (
+                  <p className="mt-0.5 text-[11px] text-surface-2">{cat.count} items</p>
+                )}
               </div>
             </Link>
           ))}
@@ -111,17 +100,15 @@ export default function Home() {
       {/* ──────────────────── Indoor / Beach split ──────────────────── */}
       <section className="mx-auto max-w-[1400px] px-4 pb-16 sm:px-6 lg:px-8">
         <div className="grid gap-x-6 gap-y-8 md:grid-cols-2">
-          {(["indoor", "beach"] as const).map((s) => (
-            <Link key={s} href={`/shop/${s}`} className="group block">
+          {surfaces.map((surface) => (
+            <Link key={surface.id} href={surface.href} className="group block">
               {/* Title sits above the card to distinguish these from the category tiles */}
               <div className="mb-3 flex items-end justify-between">
                 <div>
                   <p className="eyebrow text-subtle">
-                    {s === "beach" ? "Sand & sun" : "Court season"}
+                    {surface.id === "beach" ? "Sand & sun" : "Court season"}
                   </p>
-                  <h3 className="display mt-1 text-2xl text-ink sm:text-3xl">
-                    {s === "beach" ? "Beach" : "Indoor"}
-                  </h3>
+                  <h3 className="display mt-1 text-2xl text-ink sm:text-3xl">{surface.label}</h3>
                 </div>
                 <span className="flex items-center gap-1.5 text-sm font-semibold text-ink transition-colors group-hover:text-green-deep">
                   Shop the collection
@@ -130,8 +117,8 @@ export default function Home() {
               </div>
               <div className="relative aspect-[16/9] overflow-hidden rounded-card bg-surface">
                 <Image
-                  src={surfaceImage(s)}
-                  alt={`${s} collection`}
+                  src={surface.image?.url ?? PLACEHOLDER}
+                  alt={`${surface.label} collection`}
                   fill
                   sizes="(max-width: 768px) 100vw, 50vw"
                   className="object-cover transition-transform duration-500 group-hover:scale-105"
@@ -159,39 +146,42 @@ export default function Home() {
         </div>
         <div className="grid grid-cols-2 gap-x-4 gap-y-8 md:grid-cols-4">
           {newArrivals.map((p, i) => (
-            <ProductCard key={p.id} product={p} priority={i < 4} />
+            <ProductCard key={p.handle} product={p} priority={i < 4} />
           ))}
         </div>
       </section>
 
       {/* ──────────────────── Clubs strip ──────────────────── */}
-      <section className="bg-surface">
-        <div className="mx-auto max-w-[1400px] px-4 py-16 sm:px-6 lg:px-8">
-          <div className="mb-8 max-w-2xl">
-            <p className="eyebrow text-subtle">Made for your team</p>
-            <h2 className="display mt-2 text-3xl sm:text-4xl">Clubs &amp; teams</h2>
-            <p className="mt-3 text-base leading-relaxed text-muted">
-              Official kits and custom teamwear for clubs across the country. Find
-              your club’s store below.
-            </p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {clubs.map((club) => {
-              const img =
-                catalog.find((p) => p.clubs.includes(club.id))?.image_local ??
-                "/products/ace-unisex.png";
-              return (
+      {clubs.length > 0 && (
+        <section className="bg-surface">
+          <div className="mx-auto max-w-[1400px] px-4 py-16 sm:px-6 lg:px-8">
+            <div className="mb-8 max-w-2xl">
+              <p className="eyebrow text-subtle">Made for your team</p>
+              <h2 className="display mt-2 text-3xl sm:text-4xl">Clubs &amp; teams</h2>
+              <p className="mt-3 text-base leading-relaxed text-muted">
+                Official kits and custom teamwear for clubs across the country. Find
+                your club’s store below.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {clubs.map((club) => (
                 <Link
                   key={club.id}
-                  href={`/shop/clubs/${club.id}`}
+                  href={club.href}
                   className="group flex items-center gap-4 rounded-card border border-line bg-paper p-4 transition-colors hover:border-muted"
                 >
                   <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-card bg-surface">
-                    <Image src={img} alt={club.label} fill sizes="64px" className="object-cover" />
+                    <Image
+                      src={club.image?.url ?? PLACEHOLDER}
+                      alt={club.label}
+                      fill
+                      sizes="64px"
+                      className="object-cover"
+                    />
                   </div>
                   <div className="flex-1">
                     <h3 className="text-sm font-semibold text-ink">{club.label}</h3>
-                    <p className="text-xs text-muted">{club.count} items</p>
+                    {club.count != null && <p className="text-xs text-muted">{club.count} items</p>}
                   </div>
                   <ArrowRight
                     width={18}
@@ -199,11 +189,11 @@ export default function Home() {
                     className="text-subtle transition-colors group-hover:text-green-deep"
                   />
                 </Link>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ──────────────────── Value props ──────────────────── */}
       <section className="mx-auto max-w-[1400px] px-4 py-16 sm:px-6 lg:px-8">

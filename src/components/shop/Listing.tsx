@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 import { useMemo, useState } from "react";
-import type { Product, Facets } from "@/lib/catalog";
+import type { CatalogProduct, Facets } from "@/lib/catalog-view";
 import { ProductCard } from "@/components/product/ProductCard";
 import { Filters, emptyFilters, type FilterState } from "./Filters";
 import { FilterIcon, CloseIcon, ChevronDown } from "@/components/icons";
@@ -21,15 +21,15 @@ type SortId = (typeof SORTS)[number]["id"];
 const GENDER_LABELS: Record<string, string> = { men: "Men", women: "Women", unisex: "Unisex" };
 const SURFACE_LABELS: Record<string, string> = { beach: "Beach", indoor: "Indoor" };
 
-export function Listing({ products, facets }: { products: Product[]; facets: Facets }) {
+export function Listing({ products, facets }: { products: CatalogProduct[]; facets: Facets }) {
   const [filters, setFilters] = useState<FilterState>(emptyFilters);
   const [sort, setSort] = useState<SortId>("featured");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const filtered = useMemo(() => {
     const result = products.filter((p) => {
-      if (filters.inStock && !p.in_stock) return false;
-      if (filters.onSale && !p.on_sale) return false;
+      if (filters.inStock && !p.inStock) return false;
+      if (filters.onSale && !p.onSale) return false;
       if (filters.gender.length && !filters.gender.some((g) => p.gender.includes(g)))
         return false;
       if (filters.surface.length && !(p.surface && filters.surface.includes(p.surface)))
@@ -48,9 +48,9 @@ export function Listing({ products, facets }: { products: Product[]; facets: Fac
       case "price-desc":
         return [...result].sort((a, b) => b.price - a.price);
       case "newest":
-        return [...result].sort((a, b) => b.id - a.id);
+        return [...result].sort((a, b) => b.createdAt - a.createdAt);
       case "name-asc":
-        return [...result].sort((a, b) => a.name.localeCompare(b.name));
+        return [...result].sort((a, b) => a.title.localeCompare(b.title));
       default:
         return result;
     }
@@ -174,7 +174,7 @@ export function Listing({ products, facets }: { products: Product[]; facets: Fac
         {filtered.length > 0 ? (
           <div className="grid grid-cols-2 gap-x-4 gap-y-8 pt-6 md:grid-cols-3 xl:grid-cols-4">
             {filtered.map((p, i) => (
-              <ProductCard key={p.id} product={p} priority={i < 4} />
+              <ProductCard key={p.handle} product={p} priority={i < 4} />
             ))}
           </div>
         ) : products.length === 0 ? (

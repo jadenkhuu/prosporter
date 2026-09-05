@@ -79,6 +79,7 @@ export const PRODUCT_CARD_FRAGMENT = /* GraphQL */ `
     vendor
     productType
     tags
+    createdAt
     availableForSale
     featuredImage { ...Image }
     priceRange {
@@ -88,6 +89,9 @@ export const PRODUCT_CARD_FRAGMENT = /* GraphQL */ `
     compareAtPriceRange {
       minVariantPrice { ...Money }
       maxVariantPrice { ...Money }
+    }
+    quickAddVariants: variants(first: 2) {
+      edges { node { id availableForSale } }
     }
     ...ProductOptions
   }
@@ -100,7 +104,6 @@ export const PRODUCT_FRAGMENT = /* GraphQL */ `
     description
     descriptionHtml
     totalInventory
-    createdAt
     updatedAt
     seo { ...Seo }
     images(first: 50) {

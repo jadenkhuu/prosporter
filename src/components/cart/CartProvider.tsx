@@ -5,8 +5,10 @@ import {
   startTransition as reactStartTransition,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useOptimistic,
+  useRef,
   useState,
   useTransition,
 } from "react";
@@ -136,8 +138,8 @@ export function CartProvider({
   initialCart?: Cart | null;
   enabled?: boolean;
 }) {
-  // Server truth arrives once, at mount. Every later change comes back from a
-  // server action's return value, so there is no prop/state sync effect.
+  // Server truth is fetched once after mount (the layout stays static). Every
+  // later change comes back from a server action's return value.
   const [cart, setCart] = useState<Cart | null>(initialCart);
   const [optimisticCart, applyOptimistic] = useOptimistic(cart, optimisticReducer);
   const [isOpen, setOpen] = useState(false);
@@ -157,6 +159,14 @@ export function CartProvider({
     },
     [applyOptimistic],
   );
+
+  const fetchedOnMount = useRef(false);
+  useEffect(() => {
+    if (!enabled || initialCart || fetchedOnMount.current) return;
+    fetchedOnMount.current = true;
+    // Async: state is set when the action resolves, never synchronously in the effect.
+    run(async () => ({ cart: await getCurrentCart(), error: null }));
+  }, [enabled, initialCart, run]);
 
   const value = useMemo<CartContextValue>(() => {
     const lines = nodes(optimisticCart?.lines);

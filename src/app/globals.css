@@ -111,6 +111,31 @@
   );
 }
 
+/* Store-authored product description HTML (Shopify `descriptionHtml`). Restores
+   the block spacing and list markers that the Tailwind reset removes. */
+.product-description > * + * {
+  margin-top: 0.75em;
+}
+.product-description ul,
+.product-description ol {
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+.product-description ol {
+  list-style: decimal;
+}
+.product-description a {
+  text-decoration: underline;
+}
+.product-description strong {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+.product-description img {
+  max-width: 100%;
+  height: auto;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
