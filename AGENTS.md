@@ -27,6 +27,12 @@ Do not add, plan, or document unrelated marketing sites, club sites, CMS project
 - `SHOPIFY_OPTIONAL=1` lets a production server boot without Shopify. Remove it from CI and hosting once the store exists.
 - `exports/` (WooCommerce raw data) and `.env.local` are git-ignored and must stay so. `docs/audit/` is derived, PII-free, and committable.
 
+# Shopify Admin API (`scripts/migration/shopify_admin.py`, Python only)
+
+- The storefront never uses the Admin API. Admin access lives in the migration scripts and is minted per run from `SHOPIFY_ADMIN_CLIENT_ID` / `SHOPIFY_ADMIN_CLIENT_SECRET` (client credentials grant, 24h tokens, cached under `exports/migration/`). Never paste a `shpat_` token into code, docs, Linear or git.
+- `python3 scripts/migration/shopify_admin.py doctor` must pass (all required scopes granted) before any load against the real store. Store facts it reports: internal domain `ihuvab-u2.myshopify.com` (primary `prosporter.myshopify.com`), location "Shop location", Headless publication "ProSporter Dev".
+- Admin API version is pinned with the Storefront version (`2026-07`, `SHOPIFY_API_VERSION` in `scripts/migration/common.py`).
+
 # Local checks (Actions minutes are limited)
 
 - `npm run check` = the CI job (lint, typecheck, build, audit). `npm run hooks:install` wires it into `git pre-push`; `git push --no-verify` skips it deliberately.

@@ -169,10 +169,10 @@ class FakeShopifyTarget(Target):
 class ShopifyAdminTarget(Target):
     """STUB - real Shopify Admin GraphQL target.
 
-    Not implemented on purpose: CLNT-305 runs before any Shopify store exists,
-    and the pipeline must never touch a live endpoint during a dry run. When the
-    store is provisioned, implement each method against Admin API
-    ``SHOPIFY_ADMIN_API_VERSION`` (pinned to 2026-07) using these mutations:
+    Not implemented yet: CLNT-305's dry run must never touch a live endpoint.
+    The store now exists and ``shopify_admin.AdminClient`` provides authenticated
+    GraphQL access; implement each method against Admin API 2026-07 using these
+    mutations:
 
       metafield_definitions -> metafieldDefinitionCreate
       collections           -> collectionCreate / collectionUpdate
@@ -197,8 +197,8 @@ class ShopifyAdminTarget(Target):
 
     def __init__(self, *_args, **_kwargs):
         raise NotImplementedError(
-            "ShopifyAdminTarget is a stub: no Shopify store exists yet (CLNT-305 is a "
-            "dry run). Implement against Admin API 2026-07 using productSet, "
+            "ShopifyAdminTarget is a stub (CLNT-305 is a dry run). Implement against "
+            "Admin API 2026-07 via shopify_admin.AdminClient using productSet, "
             "productVariantsBulkCreate/Update, fileCreate, collectionCreate/"
             "collectionAddProducts, metafieldsSet, customerCreate, "
             "discountCodeBasicCreate, pageCreate and articleCreate."

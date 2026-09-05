@@ -1,8 +1,9 @@
 # ProSporter migration pipeline (CLNT-305)
 
 Repeatable, deterministic WooCommerce → Shopify migration pipeline plus its dry-run
-evidence. There is **no Shopify store yet**, so the load stage runs entirely against a
-file-backed fake Admin API. Nothing in this pipeline makes a network call.
+evidence. The default load target is a file-backed fake Admin API, so `run.py` makes no
+network calls. The client store (`prosporter.myshopify.com`) now exists and the pipeline's
+Admin access is in `shopify_admin.py`; the real loader is the next step (see below).
 
 Everything in `docs/migration/` is derived and PII-free. Every artefact that contains
 real customer or catalog data is written under `exports/` (git-ignored) and never leaves it.
@@ -149,8 +150,8 @@ ids from a persisted counter, stores each object with a payload checksum, and on
 compares checksums so an unchanged record reports `unchanged` and keeps its id.
 
 `ShopifyAdminTarget` raises `NotImplementedError` on construction. It exists so the real
-implementation has a named home and a documented contract. When the store is provisioned,
-implement it against Admin API `2026-07`:
+implementation has a named home and a documented contract. Implement it against Admin API
+`2026-07` using `shopify_admin.AdminClient`:
 
 | Stage | Mutation |
 |---|---|
@@ -171,6 +172,29 @@ implement it against Admin API `2026-07`:
 For products, variants and media use `bulkOperationRunMutation` with a staged JSONL upload.
 Keep the per-record upsert semantics: resolve existing destination ids from `mapping.json`
 before the bulk run so a rerun updates instead of creating duplicates.
+
+### Admin API access (`shopify_admin.py`)
+
+The migration app is a Shopify Dev Dashboard app ("ProSporter-migration") installed on the
+client store. There is no long-lived token: `shopify_admin.get_token()` mints a 24-hour
+token with the OAuth client credentials grant from `SHOPIFY_ADMIN_CLIENT_ID` /
+`SHOPIFY_ADMIN_CLIENT_SECRET` in `.env.local` and caches it at
+`exports/migration/.admin-token.json` (git-ignored, mode 600). `AdminClient.graphql()`
+refreshes on 401 and backs off on `THROTTLED`; `AdminClient.mutate()` raises on `userErrors`.
+
+```bash
+python3 scripts/migration/shopify_admin.py doctor   # scopes, location, publications, counts
+python3 scripts/migration/shopify_admin.py token    # force a fresh token (prints expiry only)
+```
+
+`doctor` fails when any of the required scopes are missing:
+`write_products, write_inventory, read_locations, write_customers, write_discounts,
+write_content, write_files, write_publications, write_metaobject_definitions, read_markets`.
+
+Store facts recorded 2026-09-05: internal domain `ihuvab-u2.myshopify.com`, primary domain
+`prosporter.myshopify.com`, AUD, Basic plan, one location ("Shop location",
+`gid://shopify/Location/118425878893`), Headless publication "ProSporter Dev"
+(`gid://shopify/Publication/327884112237`), no products, no product metafield definitions.
 
 ## Normalization decisions applied automatically
 
