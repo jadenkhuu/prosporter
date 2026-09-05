@@ -13,12 +13,15 @@ permissions:
   contents: read
 
 jobs:
-  verify:
-    name: Lint, typecheck, build
+  ci:
+    # One job, one install: keeps Actions minutes low. Each step still fails the run independently.
+    name: Lint, typecheck, build, audit, secrets
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for the secret scan
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -31,30 +34,9 @@ jobs:
           # The mock catalog still drives the build; Shopify vars are validated at
           # server start, not build time. Remove SHOPIFY_OPTIONAL once the store exists.
           SHOPIFY_OPTIONAL: "1"
-
-  audit:
-    name: Dependency audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci --ignore-scripts
       # Policy: no high or critical advisories in the resolved dependency tree.
       - run: npm audit --audit-level=high
-
-  secrets:
-    name: Secret scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: TruffleHog
+      - name: Secret scan
         uses: trufflesecurity/trufflehog@main
         with:
           extra_args: --only-verified
