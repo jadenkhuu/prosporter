@@ -26,3 +26,8 @@ Do not add, plan, or document unrelated marketing sites, club sites, CMS project
 - Logging goes through `src/lib/log.ts` (JSON lines). Never log personal data or tokens; log request IDs, handles and counts.
 - `SHOPIFY_OPTIONAL=1` lets a production server boot without Shopify. Remove it from CI and hosting once the store exists.
 - `exports/` (WooCommerce raw data) and `.env.local` are git-ignored and must stay so. `docs/audit/` is derived, PII-free, and committable.
+
+# Local checks (Actions minutes are limited)
+
+- `npm run check` = the CI job (lint, typecheck, build, audit). `npm run hooks:install` wires it into `git pre-push`; `git push --no-verify` skips it deliberately.
+- The workflow triggers on pull requests and manual dispatch only until the org has Actions minutes again.

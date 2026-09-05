@@ -1,9 +1,11 @@
 name: CI
 
+# While GitHub Actions minutes are exhausted, CI runs only on pull requests and on demand.
+# Pushes to main are guarded locally by .githooks/pre-push (enable with `npm run hooks:install`).
+# Restore `push: branches: [main]` here once minutes are available.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}

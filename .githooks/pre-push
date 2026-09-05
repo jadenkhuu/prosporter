@@ -1,0 +1,12 @@
+#!/bin/sh
+# Local stand-in for CI while GitHub Actions minutes are exhausted.
+# Runs the same checks as .github/workflows/ci.yml before anything reaches origin.
+# Enable once per clone:  npm run hooks:install     Skip once:  git push --no-verify
+set -e
+cd "$(git rev-parse --show-toplevel)"
+echo "pre-push: lint";       npm run -s lint
+echo "pre-push: typecheck";  npm run -s typecheck
+echo "pre-push: build";      SHOPIFY_OPTIONAL=1 npm run -s build > /dev/null
+echo "pre-push: audit";      npm audit --audit-level=high
+echo "pre-push: secrets";    ! git diff --cached -U0 origin/main...HEAD 2>/dev/null | grep -nE 'ck_[a-f0-9]{40}|cs_[a-f0-9]{40}|shpat_[a-f0-9]{32}|shpss_[a-f0-9]{32}|shpca_[a-f0-9]{32}|AKIA[0-9A-Z]{16}' || { echo "pre-push: possible secret in outgoing commits"; exit 1; }
+echo "pre-push: ok"
