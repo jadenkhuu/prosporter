@@ -92,6 +92,8 @@ def parse_args(argv=None):
                         help="required with --target shopify: confirms writes to the real store")
     parser.add_argument("--skip-types", default="",
                         help="comma-separated record types to leave out (e.g. customers,discounts)")
+    parser.add_argument("--only-types", default="",
+                        help="comma-separated record types to load and nothing else (e.g. metafield_definitions)")
     parser.add_argument("--only-products", default="",
                         help="comma-separated product handles; restricts products and their variants/media/metafields")
     parser.add_argument("--publication", default="ProSporter Dev",
@@ -154,8 +156,10 @@ def stage_load(records, exc, args, run_dir):
             raise SystemExit("give the live load its own --store ledger directory (not the fake store)")
     target = loader_mod.build_target(args.target, store_dir)
     skip_types = [t for t in args.skip_types.split(",") if t]
+    only_types = [t for t in getattr(args, "only_types", "").split(",") if t] or None
     only_products = [h for h in args.only_products.split(",") if h] or None
-    result = loader_mod.load(records, target, exc, skip_types=skip_types, only_products=only_products)
+    result = loader_mod.load(records, target, exc, skip_types=skip_types, only_products=only_products,
+                             only_types=only_types)
     write_json(run_dir / "load-result.json", {
         "store_dir": rel(store_dir),
         "stats": result["stats"],

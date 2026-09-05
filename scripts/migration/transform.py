@@ -12,6 +12,7 @@ reconciliation are always explained by a named exception.
 """
 from __future__ import annotations
 
+import json
 import re
 from collections import defaultdict
 
@@ -28,13 +29,50 @@ from errors import OWNER_AGENCY, OWNER_CLIENT
 
 STAGE = "transform"
 
+# Choice lists for the admin dropdowns. Every one is DERIVED from the same IA
+# mapping the transform uses to populate the metafields, so a definition can
+# never offer a value the pipeline does not emit, and the pipeline can never
+# emit a value the definition rejects (enforced by _choice_checked below and by
+# test_pipeline.MetafieldChoices).
+SURFACE_CHOICES = sorted(handle for handle, _title in N.SURFACE_COLLECTIONS)
+CLUB_CHOICES = sorted(handle for handle, _title in N.CLUB_COLLECTIONS)
+# assign_gender() emits either the normalized Men/Women values or the "Unisex"
+# default, so the choice list is exactly the range of normalize_gender().
+GENDER_CHOICES = sorted(set(N.GENDER_SYNONYMS.values()))
+
+CHOICES_BY_KEY = {
+    "surface": SURFACE_CHOICES,
+    "club": CLUB_CHOICES,
+    "gender": GENDER_CHOICES,
+}
+
+# namespace, key, type, admin name, owner type, merchant-facing description,
+# pinned on the product form?, choice list (None = no choices validation).
+#
+# The prosporter.* fields are pinned so a merchant adding a product by hand sees
+# them on the product form instead of behind "Show all", and the three IA fields
+# carry a `choices` validation so the admin renders a dropdown rather than a
+# free-text box. migration.woo_id stays unpinned: it is machine-written trace
+# data, not something a merchant should touch.
 METAFIELD_DEFINITIONS = [
-    ("prosporter", "surface", "single_line_text_field", "Playing surface", "PRODUCT"),
-    ("prosporter", "club", "list.single_line_text_field", "Club or team", "PRODUCT"),
-    ("prosporter", "gender", "list.single_line_text_field", "Gender", "PRODUCT"),
-    ("prosporter", "size_guide", "single_line_text_field", "Size guide", "PRODUCT"),
-    ("prosporter", "personalisation", "json", "Personalisation fields", "PRODUCT"),
-    ("migration", "woo_id", "single_line_text_field", "Source WooCommerce id", "PRODUCT"),
+    ("prosporter", "surface", "single_line_text_field", "Playing surface", "PRODUCT",
+     "Where the product is played: indoor or beach. Drives the Indoor and Beach collections and the storefront filter.",
+     True, SURFACE_CHOICES),
+    ("prosporter", "club", "list.single_line_text_field", "Club or team", "PRODUCT",
+     "Clubs this product belongs to. Pick one or more; each value matches a club collection on the storefront.",
+     True, CLUB_CHOICES),
+    ("prosporter", "gender", "list.single_line_text_field", "Gender", "PRODUCT",
+     "Who the product is cut for. Use Unisex unless the fit is specifically men's or women's.",
+     True, GENDER_CHOICES),
+    ("prosporter", "size_guide", "single_line_text_field", "Size guide", "PRODUCT",
+     "Handle of the size-guide page to show on this product, e.g. size-guide-apparel. Leave blank for no guide.",
+     True, None),
+    ("prosporter", "personalisation", "json", "Personalisation fields", "PRODUCT",
+     "JSON describing the name/number personalisation offered on this product. Leave blank unless the team-kit model has been approved.",
+     True, None),
+    ("migration", "woo_id", "single_line_text_field", "Source WooCommerce id", "PRODUCT",
+     "Set by the WooCommerce migration to trace this product back to its source record. Do not edit or delete.",
+     False, None),
 ]
 
 # WordPress pages that are storefront routes, not content to migrate.
@@ -106,17 +144,26 @@ class _Context:
 
 
 def _metafield_definitions(snapshot):
-    return [
-        {
+    rows = []
+    for ns, key, mtype, name, owner, description, pin, choices in METAFIELD_DEFINITIONS:
+        # Admin API 2026-07: the `choices` validation takes a JSON array string
+        # and is supported by single_line_text_field and list.single_line_text_field.
+        validations = (
+            [{"name": "choices", "value": json.dumps(choices, separators=(",", ":"))}]
+            if choices else []
+        )
+        rows.append({
             "namespace": ns,
             "key": key,
             "type": mtype,
             "name": name,
             "owner_type": owner,
+            "description": description,
+            "pin": pin,
+            "validations": validations,
             "source": {"woo_id": None, "woo_type": "definition", "source_snapshot": snapshot},
-        }
-        for ns, key, mtype, name, owner in METAFIELD_DEFINITIONS
-    ]
+        })
+    return rows
 
 
 # --------------------------------------------------------------------------
@@ -648,15 +695,51 @@ def _product_metafields(ctx, handle, woo_id, surface, clubs, gender, held):
         "held": held,
         "source": ctx.source(woo_id, "product"),
     }]
+    # Every value below must be one of the definition's `choices`, or Shopify
+    # rejects the metafield. _choice_checked drops the offender and raises
+    # metafield_value_outside_choices rather than loading an invalid value.
+    surface = _choice_checked(ctx, handle, woo_id, "surface", surface)
+    clubs = _choice_checked(ctx, handle, woo_id, "club", clubs)
+    gender = _choice_checked(ctx, handle, woo_id, "gender", gender)
     if surface:
         rows.append(_mf(ctx, handle, woo_id, "surface", "single_line_text_field", surface, held))
     if clubs:
         rows.append(_mf(ctx, handle, woo_id, "club", "list.single_line_text_field", clubs, held))
-    rows.append(_mf(ctx, handle, woo_id, "gender", "list.single_line_text_field", gender, held))
+    if gender:
+        rows.append(_mf(ctx, handle, woo_id, "gender", "list.single_line_text_field", gender, held))
     # prosporter.size_guide and prosporter.personalisation are defined but not
     # populated: no size-guide field exists in Woo, and PPOM personalisation
     # evidence lives on order lines (workstream 5), not on products.
     return rows
+
+
+def _choice_checked(ctx, handle, woo_id, key, value):
+    """Drop any value the ``prosporter.<key>`` definition would reject.
+
+    The choice lists are derived from the same IA mapping that produces these
+    values, so a hit here means the mapping and the definition have drifted
+    apart. That is a bug worth a named exception, never a silently invalid
+    metafield: Shopify would reject the value at load time.
+    """
+    if not value:
+        return value
+    choices = CHOICES_BY_KEY[key]
+    values = value if isinstance(value, list) else [value]
+    bad = [v for v in values if v not in choices]
+    if not bad:
+        return value
+    ctx.exc.add(
+        record_type="metafield", record_id=woo_id, record_ref=f"{handle}:prosporter.{key}",
+        stage=STAGE, severity="high", code="metafield_value_outside_choices",
+        message=f"prosporter.{key} value(s) {', '.join(sorted(bad))} are not in the "
+                f"definition's choice list; dropped rather than loaded as invalid",
+        owner=OWNER_AGENCY, retry_status="needs-decision",
+        detail={"key": f"prosporter.{key}", "rejected": sorted(bad), "choices": choices},
+    )
+    kept = [v for v in values if v in choices]
+    if isinstance(value, list):
+        return kept
+    return kept[0] if kept else None
 
 
 def _mf(ctx, handle, woo_id, key, mtype, value, held):

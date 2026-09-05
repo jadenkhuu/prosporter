@@ -104,6 +104,48 @@ populated**: no size-guide field exists in the source, and the PPOM personalisat
 lives on order lines (workstream 5), not on products. Populating `personalisation` is a
 follow-up once the team-kit line-item property model is approved.
 
+### Metafield definitions
+
+Each `metafield_definitions.jsonl` record carries `namespace`, `key`, `type`, `name`,
+`owner_type`, plus `description`, `pin` and `validations`. The types are fixed by the
+storefront and never change; `description`, `pin` and `validations` exist so the fields are
+usable by hand in the Shopify admin.
+
+| Definition | Type | Pinned | Choices |
+|---|---|---|---|
+| `prosporter.surface` | `single_line_text_field` | yes | `beach`, `indoor` |
+| `prosporter.club` | `list.single_line_text_field` | yes | `inner-west-volley`, `provolley-academy`, `teamwear` |
+| `prosporter.gender` | `list.single_line_text_field` | yes | `Men`, `Unisex`, `Women` |
+| `prosporter.size_guide` | `single_line_text_field` | yes | free text |
+| `prosporter.personalisation` | `json` | yes | free text (JSON) |
+| `migration.woo_id` | `single_line_text_field` | **no** | free text |
+
+`validations` is a list of `{name, value}` pairs. The only one used is `choices`, whose
+value is a **JSON array string** (`"[\"beach\",\"indoor\"]"`); 2026-07 supports it on
+`single_line_text_field` and `list.single_line_text_field` (confirmed against
+`metafieldDefinitionTypes.supportedValidations` on the client store).
+
+The choice lists are **derived, not typed twice**: `transform.SURFACE_CHOICES` and
+`CLUB_CHOICES` come from `normalize.SURFACE_COLLECTIONS` / `CLUB_COLLECTIONS`, and
+`GENDER_CHOICES` from the range of `normalize.GENDER_SYNONYMS` — the same mapping that
+populates the values. Before emitting a value the transform checks it against its choice
+list; anything outside it is dropped and raised as `metafield_value_outside_choices`
+(high, `purpl`) rather than loaded as a metafield Shopify would reject. All 394 values
+already on the store are inside these lists.
+
+Storefront access is unchanged: `PUBLIC_READ` for `prosporter.*`, `NONE` for `migration.*`.
+
+#### What a merchant sees in the admin
+
+Pinned definitions appear directly on the product form (Products → a product →
+**Metafields**) instead of behind **Show all**, in definition order. With the `choices`
+validation, `Playing surface` renders as a single-select dropdown and `Club or team` and
+`Gender` as multi-select lists — no free typing, so a hand-added product cannot invent a
+club handle the storefront has no collection for. Each field shows its one-line
+description underneath. `migration.woo_id` stays unpinned and off the form (still visible
+under **Show all**) and its description says it is set by the migration and must not be
+edited.
+
 ## Mapping manifest
 
 `exports/migration/fake-store/mapping.json` is the anti-duplication key. Identity per
@@ -171,7 +213,7 @@ implementation has a named home and a documented contract. Implement it against 
 
 | Stage | Mutation |
 |---|---|
-| metafield definitions | `metafieldDefinitionCreate` |
+| metafield definitions | `metafieldDefinitionCreate` / `metafieldDefinitionUpdate` |
 | collections | `collectionCreate` / `collectionUpdate` |
 | products and options | `productSet` |
 | variants | `productVariantsBulkCreate` / `productVariantsBulkUpdate` |
@@ -227,6 +269,10 @@ retried on the next run because it never entered the ledger.
 python3 scripts/migration/run.py all --target shopify --live \
     --store exports/migration/live-store --skip-types customers,discounts,pages,articles \
     --only-products ace-unisex,nago --no-docs
+# definitions only: apply a metafield-definition change and touch nothing else
+python3 scripts/migration/run.py all --target shopify --live \
+    --store exports/migration/live-store --no-docs \
+    --skip-types collections,products,variants,media,variants_inventory,collection_membership,metafields,pages,articles,customers,discounts
 # staging reset: delete everything the ledger created (dry run without --yes)
 python3 scripts/migration/shopify_target.py purge --store exports/migration/live-store --yes
 # QA only: make one product visible to the Headless storefront
@@ -236,6 +282,16 @@ python3 scripts/migration/shopify_admin.py publish --handle nago --publication "
 `--live` is mandatory for `--target shopify`, `--reset-store` is refused for it, and the
 live ledger must not be the fake-store directory. The ledger records the store domain and
 refuses to run against a different store.
+
+`--skip-types` takes record types, and `loader.LOAD_ORDER` has exactly twelve; naming the
+eleven that are not `metafield_definitions` (the command above) is the supported way to
+apply a definition-only change: the loader visits no other resource, so no product,
+variant, metafield or customer call is made. Definitions are idempotent against the ledger
+checksum, so a rerun with nothing changed reports `unchanged` and costs zero API calls.
+
+`purge` deletes ledger `MetafieldDefinition` rows with
+`metafieldDefinitionDelete(deleteAllAssociatedMetafields: true)`, so it removes the 394
+loaded values with the definitions. It is a staging reset only.
 
 2026-07 Admin API behaviour the loader depends on (verified on the client store, 5 Sep 2026):
 
@@ -248,6 +304,7 @@ refuses to run against a different store.
 | Discounts | `customerSelection` replaced by `context: {all: ALL}` | as documented; category-restricted, excluded-product and free-shipping-plus-value coupons are failed with a decision message |
 | Product media | `productUpdate(media:[...])`; variant images via `productVariantsBulkUpdate(mediaId)` once media is `READY` | one image per call, id found by diffing the product's media list; variant images attached in `finish()` after polling (90 s cap) |
 | Page/article SEO | no `seo` on page/article inputs | `global.title_tag` / `global.description_tag` metafields |
+| Metafield definitions | `MetafieldDefinitionInput` and `MetafieldDefinitionUpdateInput` both carry `description`, `pin: Boolean` and `validations: [MetafieldDefinitionValidationInput!]`; only the create input takes `type` | one `metafieldDefinitionCreate` or `metafieldDefinitionUpdate` per definition with pin, description and validations inline — `metafieldDefinitionPin` / `metafieldDefinitionUnpin` are never needed |
 
 ### Publish stage (`run.py publish`)
 

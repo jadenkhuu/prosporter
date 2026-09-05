@@ -194,7 +194,7 @@ class EndToEnd(unittest.TestCase):
         return argparse.Namespace(
             stage="all", run_id=None, source=str(source), target="fake",
             store=str(store), no_docs=True, reset_store=False, fail_on_critical=False,
-            live=False, skip_types="", only_products="",
+            live=False, skip_types="", only_products="", only_types="",
         )
 
     def test_rerun_creates_nothing_and_changes_nothing(self):
@@ -546,6 +546,225 @@ class FailureRecovery(unittest.TestCase):
             for handle in ("collection-a", "collection-c"):
                 self.assertEqual(second.state["objects"]["Collection"][handle]["id"],
                                  first.state["objects"]["Collection"][handle]["id"])
+
+
+class DefinitionStubClient:
+    """Stub client for the metafield-definition upsert path.
+
+    Records every definition input the target sends and answers the "does this
+    definition already exist?" lookup from a set of pre-existing keys.
+    """
+
+    def __init__(self, existing=(), domain="stub.myshopify.com"):
+        self.domain = domain
+        self.calls = 0
+        self.existing = set(existing)  # "<namespace>.<key>"
+        self.created: list[dict] = []
+        self.updated: list[dict] = []
+        self.counter = 0
+
+    def graphql(self, query, variables=None):
+        self.calls += 1
+        if "metafieldDefinitions(" in query:
+            key = f"{variables['ns']}.{variables['key']}"
+            node = [{"id": f"gid://shopify/MetafieldDefinition/{key}"}] if key in self.existing else []
+            return {"metafieldDefinitions": {"nodes": node}}
+        raise AssertionError(f"unexpected query: {query[:80]}")
+
+    def mutate(self, query, variables=None, field=None):
+        self.calls += 1
+        definition = variables["d"]
+        if field == "metafieldDefinitionUpdate":
+            self.updated.append(definition)
+            return {"updatedDefinition": {"id": "gid://shopify/MetafieldDefinition/x"}}
+        self.created.append(definition)
+        self.counter += 1
+        return {"createdDefinition": {"id": f"gid://shopify/MetafieldDefinition/{self.counter:03d}"}}
+
+
+def definitions_by_key(records):
+    return {f"{d['namespace']}.{d['key']}": d for d in records["metafield_definitions"]}
+
+
+class MetafieldDefinitionShape(unittest.TestCase):
+    """The definitions must be pleasant in the admin: pinned, described, and
+    rendering as dropdowns via a `choices` validation."""
+
+    def setUp(self):
+        _data, self.records, _exc = build_records()
+        self.definitions = definitions_by_key(self.records)
+
+    def test_prosporter_definitions_are_pinned_and_migration_is_not(self):
+        for key, definition in self.definitions.items():
+            with self.subTest(key=key):
+                self.assertEqual(definition["pin"], definition["namespace"] == "prosporter")
+
+    def test_every_definition_has_a_merchant_facing_description(self):
+        for key, definition in self.definitions.items():
+            with self.subTest(key=key):
+                self.assertTrue(definition["description"])
+        self.assertIn("Do not edit", self.definitions["migration.woo_id"]["description"])
+
+    def test_choices_validation_carries_a_json_array_of_the_ia_values(self):
+        import json
+        expected = {
+            "prosporter.surface": ["beach", "indoor"],
+            "prosporter.club": ["inner-west-volley", "provolley-academy", "teamwear"],
+            "prosporter.gender": ["Men", "Unisex", "Women"],
+        }
+        for key, choices in expected.items():
+            with self.subTest(key=key):
+                validations = self.definitions[key]["validations"]
+                self.assertEqual([v["name"] for v in validations], ["choices"])
+                self.assertEqual(json.loads(validations[0]["value"]), choices)
+
+    def test_free_form_definitions_carry_no_choices(self):
+        for key in ("prosporter.size_guide", "prosporter.personalisation", "migration.woo_id"):
+            with self.subTest(key=key):
+                self.assertEqual(self.definitions[key]["validations"], [])
+
+    def test_storefront_visible_types_are_unchanged(self):
+        """src/lib/shopify/fragments.ts reads these keys; the value shapes must not move."""
+        expected = {
+            "prosporter.surface": "single_line_text_field",
+            "prosporter.club": "list.single_line_text_field",
+            "prosporter.gender": "list.single_line_text_field",
+            "prosporter.size_guide": "single_line_text_field",
+            "prosporter.personalisation": "json",
+            "migration.woo_id": "single_line_text_field",
+        }
+        self.assertEqual({k: d["type"] for k, d in self.definitions.items()}, expected)
+
+
+class MetafieldChoices(unittest.TestCase):
+    """Every value the transform emits must already be a valid choice, or the
+    394 values on the live store would be rejected by the updated definitions."""
+
+    def setUp(self):
+        _data, self.records, self.exc = build_records()
+        self.definitions = definitions_by_key(self.records)
+
+    def _choices(self, namespace, key):
+        import json
+        validations = self.definitions[f"{namespace}.{key}"]["validations"]
+        return json.loads(validations[0]["value"]) if validations else None
+
+    def test_every_emitted_value_is_inside_its_choice_list(self):
+        checked = 0
+        for row in self.records["metafields"]:
+            choices = self._choices(row["namespace"], row["key"])
+            if choices is None:
+                continue
+            values = row["value"] if isinstance(row["value"], list) else [row["value"]]
+            for value in values:
+                with self.subTest(key=f"{row['namespace']}.{row['key']}", value=value):
+                    self.assertIn(value, choices)
+                checked += 1
+        self.assertGreater(checked, 0)
+        self.assertFalse([r for r in self.exc.rows
+                          if r["code"] == "metafield_value_outside_choices"])
+
+    def test_choice_lists_come_from_the_ia_mapping(self):
+        self.assertEqual(transform_mod.SURFACE_CHOICES,
+                         sorted(h for h, _ in N.SURFACE_COLLECTIONS))
+        self.assertEqual(transform_mod.CLUB_CHOICES,
+                         sorted(h for h, _ in N.CLUB_COLLECTIONS))
+        for value in N.GENDER_SYNONYMS.values():
+            self.assertIn(value, transform_mod.GENDER_CHOICES)
+
+    def test_a_value_outside_the_choices_raises_rather_than_loading(self):
+        exc = ExceptionCollector()
+        ctx = argparse.Namespace(exc=exc)
+        kept = transform_mod._choice_checked(
+            ctx, "some-handle", 101, "club", ["provolley-academy", "not-a-club"])
+        self.assertEqual(kept, ["provolley-academy"])
+        codes = [r["code"] for r in exc.rows]
+        self.assertEqual(codes, ["metafield_value_outside_choices"])
+        self.assertEqual(exc.rows[0]["detail"]["rejected"], ["not-a-club"])
+
+    def test_a_scalar_outside_the_choices_is_dropped(self):
+        exc = ExceptionCollector()
+        ctx = argparse.Namespace(exc=exc)
+        self.assertIsNone(
+            transform_mod._choice_checked(ctx, "some-handle", 101, "surface", "grass"))
+        self.assertEqual([r["code"] for r in exc.rows], ["metafield_value_outside_choices"])
+
+
+class LiveDefinitionUpsert(unittest.TestCase):
+    """The live target sends pin/description/validations on both the create and
+    the update path, and a rerun with no change costs no API call."""
+
+    SKIP = ["collections", "products", "variants", "media", "variants_inventory",
+            "collection_membership", "metafields", "pages", "articles",
+            "customers", "discounts"]
+
+    def _load(self, store_dir, client, records):
+        import loader
+        import shopify_target
+        target = shopify_target.ShopifyAdminTarget(store_dir, client=client)
+        result = loader.load(records, target, ExceptionCollector(), skip_types=self.SKIP)
+        return target, result
+
+    def test_create_update_and_unchanged(self):
+        import json
+        _data, records, _exc = build_records()
+        definitions_only = {"metafield_definitions": records["metafield_definitions"]}
+        with tempfile.TemporaryDirectory() as tmp:
+            store_dir = Path(tmp) / "ledger"
+
+            client = DefinitionStubClient()
+            _target, run1 = self._load(store_dir, client, definitions_only)
+            self.assertEqual(run1["stats"]["created"], 6)
+            self.assertEqual(len(client.created), 6)
+            created = {f"{d['namespace']}.{d['key']}": d for d in client.created}
+            surface = created["prosporter.surface"]
+            self.assertTrue(surface["pin"])
+            self.assertEqual(surface["type"], "single_line_text_field")
+            self.assertEqual(surface["access"], {"storefront": "PUBLIC_READ"})
+            self.assertEqual(json.loads(surface["validations"][0]["value"]), ["beach", "indoor"])
+            self.assertTrue(surface["description"])
+            self.assertFalse(created["migration.woo_id"]["pin"])
+            self.assertEqual(created["migration.woo_id"]["access"], {"storefront": "NONE"})
+
+            # Rerun with identical records: no mutation at all.
+            rerun_client = DefinitionStubClient()
+            _target, run2 = self._load(store_dir, rerun_client, definitions_only)
+            self.assertEqual(run2["stats"]["unchanged"], 6)
+            self.assertEqual(rerun_client.created, [])
+            self.assertEqual(rerun_client.updated, [])
+            self.assertEqual(rerun_client.calls, 0)
+
+            # A changed definition goes through metafieldDefinitionUpdate, which
+            # carries pin and validations (2026-07 MetafieldDefinitionUpdateInput)
+            # and never a `type`.
+            changed = json.loads(json.dumps(definitions_only))
+            for row in changed["metafield_definitions"]:
+                row["description"] = row["description"] + " (revised)"
+            update_client = DefinitionStubClient()
+            _target, run3 = self._load(store_dir, update_client, changed)
+            self.assertEqual(run3["stats"]["updated"], 6)
+            self.assertEqual(update_client.created, [])
+            self.assertEqual(len(update_client.updated), 6)
+            updated = {f"{d['namespace']}.{d['key']}": d for d in update_client.updated}
+            self.assertNotIn("type", updated["prosporter.gender"])
+            self.assertTrue(updated["prosporter.gender"]["pin"])
+            self.assertEqual(json.loads(updated["prosporter.gender"]["validations"][0]["value"]),
+                             ["Men", "Unisex", "Women"])
+            self.assertTrue(updated["prosporter.gender"]["description"].endswith("(revised)"))
+
+    def test_skip_types_can_restrict_a_live_run_to_definitions_only(self):
+        """The flag combination the orchestrator uses to apply this change."""
+        import loader
+        _data, records, _exc = build_records()
+        with tempfile.TemporaryDirectory() as tmp:
+            client = DefinitionStubClient()
+            import shopify_target
+            target = shopify_target.ShopifyAdminTarget(Path(tmp) / "ledger", client=client)
+            result = loader.load(records, target, ExceptionCollector(), skip_types=self.SKIP)
+            self.assertEqual({r["record_type"] for r in result["results"]},
+                             {"metafield_definitions"})
+            self.assertEqual(sorted(self.SKIP + ["metafield_definitions"]),
+                             sorted(rt for rt, _resource, _key in loader.LOAD_ORDER))
 
 
 if __name__ == "__main__":

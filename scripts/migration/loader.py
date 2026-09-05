@@ -215,7 +215,7 @@ def build_target(name: str, store_dir: Path) -> Target:
     raise ValueError(f"unknown target {name!r}")
 
 
-def load(records: dict, target: Target, exc, skip_types=(), only_products=None) -> dict:
+def load(records: dict, target: Target, exc, skip_types=(), only_products=None, only_types=None) -> dict:
     """Apply every record to the target in the plan's load order.
 
     ``skip_types`` names record types to leave out of this run (e.g. customers
@@ -226,8 +226,9 @@ def load(records: dict, target: Target, exc, skip_types=(), only_products=None) 
     results = []
     skip = set(skip_types or ())
     only = set(only_products) if only_products else None
+    allowed = set(only_types) if only_types else None
     for record_type, resource, _key in LOAD_ORDER:
-        if record_type in skip:
+        if record_type in skip or (allowed is not None and record_type not in allowed):
             continue
         for payload, key in _payloads(record_type, records, exc):
             if payload is None or not _selected(record_type, payload, only):

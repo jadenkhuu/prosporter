@@ -221,20 +221,33 @@ class ShopifyAdminTarget(FakeShopifyTarget):
             nodes = data["metafieldDefinitions"]["nodes"]
             existing = nodes[0]["id"] if nodes else None
         storefront = "PUBLIC_READ" if p["namespace"] == "prosporter" else "NONE"
+        # 2026-07: MetafieldDefinitionInput and MetafieldDefinitionUpdateInput both
+        # carry `description`, `pin: Boolean` and `validations: [MetafieldDefinitionValidationInput!]`
+        # ({name, value} pairs; `choices` takes a JSON array string), so pinning
+        # needs no separate metafieldDefinitionPin call on either path. `type` is
+        # create-only - the update input has no type field.
+        definition = {
+            "namespace": p["namespace"],
+            "key": p["key"],
+            "ownerType": p["owner_type"],
+            "name": p["name"],
+            "description": p.get("description") or "",
+            "pin": bool(p.get("pin")),
+            "validations": list(p.get("validations") or []),
+            "access": {"storefront": storefront},
+        }
         if existing:
             self.client.mutate(
                 "mutation($d:MetafieldDefinitionUpdateInput!){ metafieldDefinitionUpdate(definition:$d){"
                 " updatedDefinition{ id } userErrors{ field message } } }",
-                {"d": {"namespace": p["namespace"], "key": p["key"], "ownerType": p["owner_type"],
-                       "name": p["name"], "access": {"storefront": storefront}}},
+                {"d": definition},
                 "metafieldDefinitionUpdate",
             )
             return existing
         result = self.client.mutate(
             "mutation($d:MetafieldDefinitionInput!){ metafieldDefinitionCreate(definition:$d){"
             " createdDefinition{ id } userErrors{ field message code } } }",
-            {"d": {"namespace": p["namespace"], "key": p["key"], "ownerType": p["owner_type"],
-                   "name": p["name"], "type": p["type"], "access": {"storefront": storefront}}},
+            {"d": dict(definition, type=p["type"])},
             "metafieldDefinitionCreate",
         )
         return result["createdDefinition"]["id"]
