@@ -6,6 +6,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
 } from "react";
 
@@ -75,7 +76,10 @@ const STORAGE_KEY = "prosporter.cart.v1";
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [lines, dispatch] = useReducer(reducer, []);
   const [isOpen, setOpen] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
+  // Effects run in order on mount: hydrate first, then persist. The persist
+  // effect must skip that first run or it would overwrite the stored cart with
+  // the empty initial state before the hydrate dispatch has re-rendered.
+  const hydrated = useRef(false);
 
   // Load persisted cart once on mount.
   useEffect(() => {
@@ -85,14 +89,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     } catch {
       /* ignore malformed storage */
     }
-    setHydrated(true);
   }, []);
 
   // Persist on change (after initial hydration).
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated.current) {
+      hydrated.current = true;
+      return;
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(lines));
-  }, [lines, hydrated]);
+  }, [lines]);
 
   const value = useMemo<CartContext>(() => {
     const count = lines.reduce((n, l) => n + l.qty, 0);

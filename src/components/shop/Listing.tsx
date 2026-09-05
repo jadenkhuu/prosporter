@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useMemo, useState } from "react";
 import type { Product, Facets } from "@/lib/catalog";
 import { ProductCard } from "@/components/product/ProductCard";
@@ -174,6 +176,19 @@ export function Listing({ products, facets }: { products: Product[]; facets: Fac
             {filtered.map((p, i) => (
               <ProductCard key={p.id} product={p} priority={i < 4} />
             ))}
+          </div>
+        ) : products.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
+            <p className="display text-2xl">Nothing here yet</p>
+            <p className="max-w-sm text-sm text-muted">
+              This collection has no products at the moment. Check back soon or browse everything.
+            </p>
+            <Link
+              href="/shop"
+              className="mt-1 rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-paper hover:bg-ink-2"
+            >
+              Shop all
+            </Link>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center gap-3 py-24 text-center">
