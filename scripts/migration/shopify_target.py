@@ -45,7 +45,9 @@ CLI::
 from __future__ import annotations
 
 import json
+import re
 import time
+import urllib.parse
 import uuid
 from pathlib import Path
 
@@ -115,6 +117,7 @@ class ShopifyAdminTarget(FakeShopifyTarget):
         self.aux.setdefault("created_blogs", {})            # handle -> gid (only blogs we created)
         self.stats["failed"] = 0
         self.failures: list[dict] = []
+        self.warnings: list[dict] = []  # record loaded, but with a caveat worth surfacing
         self.deferred_variant_media: list[tuple[str, str, str, str]] = []  # (product, variant, media, key)
         self._variant_cache: dict[str, list[dict]] = {}
         self._touched_products: set[str] = set()  # products whose variants this run wrote
@@ -164,6 +167,9 @@ class ShopifyAdminTarget(FakeShopifyTarget):
         bucket["failed"] += 1
         self.failures.append({"resource": resource, "key": key, "message": message[:500]})
 
+    def _warn(self, resource, key, message):
+        self.warnings.append({"resource": resource, "key": key, "message": message[:500]})
+
     def _flush(self):
         self.store_dir.mkdir(parents=True, exist_ok=True)
         write_json(self.store_path, self.state)
@@ -177,6 +183,7 @@ class ShopifyAdminTarget(FakeShopifyTarget):
             "api_version": SHOPIFY_API_VERSION,
             "count": len(self.failures),
             "failures": self.failures,
+            "warnings": self.warnings,
         })
 
     def gid(self, resource: str, key: str):
@@ -420,6 +427,10 @@ class ShopifyAdminTarget(FakeShopifyTarget):
                 {"pid": product_gid, "v": [variant]}, "productVariantsBulkUpdate",
             )
             node = result["productVariants"][0]
+            # Keep the per-product cache truthful: the auto-created variant had
+            # no SKU until this update, and the media stage looks variants up by SKU.
+            match.update(node)
+            match["metafield"] = {"value": woo_id}
         else:
             variant = self._variant_input(p, create=True)
             result = self.client.mutate(
@@ -472,12 +483,66 @@ class ShopifyAdminTarget(FakeShopifyTarget):
             self._media_cache[product_gid] = {n["id"] for n in product["media"]["nodes"]}
         return self._media_cache[product_gid]
 
+    @staticmethod
+    def _source_url(url: str) -> str:
+        """Percent-encode anything Shopify's fetcher rejects (e.g. U+202F in
+        macOS screenshot names) while leaving existing escapes alone."""
+        return urllib.parse.quote(url, safe=":/?=&%+@")
+
+    @staticmethod
+    def _stem(url_or_name: str) -> str:
+        name = urllib.parse.unquote(url_or_name.split("?", 1)[0].rsplit("/", 1)[-1])
+        name = name.rsplit(".", 1)[0]
+        return re.sub(r"[^a-z0-9]", "", name.lower())
+
+    def _live_media(self, product_gid: str) -> list[dict]:
+        """[{id, status, stem}] for the product; cached per run."""
+        cache = self._media_cache.setdefault("__live__", {})
+        if product_gid not in cache:
+            data = self.client.graphql(
+                "query($id:ID!){ product(id:$id){ media(first:250){ nodes{ id status"
+                " ... on MediaImage { image{ url } } } } } }", {"id": product_gid}
+            )
+            nodes = ((data.get("product") or {}).get("media") or {}).get("nodes", [])
+            cache[product_gid] = [
+                {"id": n["id"], "status": n["status"],
+                 "stem": self._stem(((n.get("image") or {}).get("url")) or "")}
+                for n in nodes
+            ]
+            self._media_cache[product_gid] = {n["id"] for n in nodes}
+        return cache[product_gid]
+
+    def _claimed_media_ids(self) -> set[str]:
+        return {e["id"] for e in self.state["objects"].get("MediaImage", {}).values()}
+
+    def _find_uploaded_media(self, product_gid: str, source_url: str):
+        """An image that reached the product on an earlier run but never made it
+        into the ledger (e.g. the run failed after the upload). Shopify keeps the
+        source filename in the CDN URL, so match on the normalised stem among
+        media no ledger entry claims yet."""
+        stem = self._stem(source_url)
+        if not stem:
+            return None
+        claimed = self._claimed_media_ids()
+        for node in self._live_media(product_gid):
+            if node["id"] in claimed:
+                continue
+            # Exact stem, or Shopify's duplicate-filename suffix ("name_<n>").
+            if node["stem"] == stem or re.fullmatch(re.escape(stem) + r"_?[0-9a-f]{1,32}", node["stem"]):
+                return node["id"]
+        return None
+
     def _media(self, key, p, existing):
         if p.get("reachable") is False:
             raise ShopifyAdminError(f"source image unreachable (HTTP {p.get('http_status')})")
         product_gid = self.gid("Product", p["product_handle"])
         if not product_gid:
             raise ShopifyAdminError(f"product {p['product_handle']} was not loaded; media skipped")
+        variant = None
+        if p.get("variant_sku"):
+            variant = next(
+                (v for v in self._variants(product_gid) if v.get("sku") == p["variant_sku"]), None
+            )
         if existing:
             # Alt text is the only mutable attribute we own; update it in place.
             if p.get("alt"):
@@ -487,28 +552,34 @@ class ShopifyAdminTarget(FakeShopifyTarget):
                 )
             media_gid = existing
         else:
-            before = set(self._media_ids(product_gid))
-            media = {"originalSource": p["original_url"], "mediaContentType": "IMAGE"}
-            if p.get("alt"):
-                media["alt"] = p["alt"]
-            result = self.client.mutate(
-                "mutation($p:ProductUpdateInput!,$m:[CreateMediaInput!]){ productUpdate(product:$p, media:$m){"
-                " product{ media(first:250){ nodes{ id } } } userErrors{ field message } } }",
-                {"p": {"id": product_gid}, "m": [media]}, "productUpdate",
-            )
-            after = {n["id"] for n in result["product"]["media"]["nodes"]}
-            new = after - before
-            self._media_cache[product_gid] = after
-            if len(new) != 1:
-                raise ShopifyAdminError(f"expected one new media object, saw {len(new)}")
-            media_gid = new.pop()
+            media_gid = self._find_uploaded_media(product_gid, p["original_url"])
+            if media_gid:
+                self._warn("MediaImage", key, "reused an image already on the product (uploaded by an earlier run)")
+            else:
+                before = set(self._media_ids(product_gid))
+                media = {"originalSource": self._source_url(p["original_url"]), "mediaContentType": "IMAGE"}
+                if p.get("alt"):
+                    media["alt"] = p["alt"]
+                result = self.client.mutate(
+                    "mutation($p:ProductUpdateInput!,$m:[CreateMediaInput!]){ productUpdate(product:$p, media:$m){"
+                    " product{ media(first:250){ nodes{ id } } } userErrors{ field message } } }",
+                    {"p": {"id": product_gid}, "m": [media]}, "productUpdate",
+                )
+                after = {n["id"] for n in result["product"]["media"]["nodes"]}
+                new = after - before
+                self._media_cache[product_gid] = after
+                self._media_cache.get("__live__", {}).pop(product_gid, None)
+                if len(new) != 1:
+                    raise ShopifyAdminError(f"expected one new media object, saw {len(new)}")
+                media_gid = new.pop()
         if p.get("variant_sku"):
-            variant = next(
-                (v for v in self._variants(product_gid) if v.get("sku") == p["variant_sku"]), None
-            )
             if variant is None:
-                raise ShopifyAdminError(f"variant with sku {p['variant_sku']} not found for image")
-            self.deferred_variant_media.append((product_gid, variant["id"], media_gid, key))
+                # The variant is held (not loaded) or its SKU changed: keep the image
+                # in the product gallery and surface the missing attachment.
+                self._warn("MediaImage", key,
+                           f"variant with sku {p['variant_sku']} not loaded; image kept in gallery, not attached")
+            else:
+                self.deferred_variant_media.append((product_gid, variant["id"], media_gid, key))
         return media_gid
 
     def _attach_deferred_variant_media(self):
