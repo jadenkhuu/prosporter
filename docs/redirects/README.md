@@ -75,15 +75,25 @@ excluded from the migration; they are never indexed and never linked off-site.
 
 ### Trailing slash
 
-Every legacy URL ends in `/`. Next.js normalizes that away with its own 308
-**before** matching `redirects()`, and a `source` written with a trailing slash is
-unreachable (verified against a running server: it 404s without the slash and only
-ever 308s to the slash-free form). Sources are therefore stored slash-free, which
-is the only form that matches. The consequence is that a legacy `/path/` request
-costs one platform normalization hop before the redirect. That is not a chain in
-the map - `verification-report.md` counts it separately - but to land legacy links
-in a genuine single hop, strip the trailing slash at the CDN/edge before Next.js
-sees the request.
+Every legacy URL ends in `/`. Out of the box Next.js normalizes that away with
+its own 308 **before** matching `redirects()` and before `src/proxy.ts` runs, so a
+`source` written with a trailing slash is unreachable (verified against a running
+server: it 404s without the slash and only ever 308s to the slash-free form).
+Sources are therefore stored slash-free, which is the only form that matches, and
+a legacy `/path/` request costs one platform normalization hop before the
+redirect. That is not a chain in the map; `verification-report.md` counts it
+separately.
+
+The fix is `skipTrailingSlashRedirect: true` in `next.config.ts`. That hands the
+normalization to `src/proxy.ts`, which strips the slash itself, looks the path up
+in `redirects.json` / `gone.json`, and answers with the final destination (or a
+410) in **one** hop; anything that is not a legacy URL still gets the ordinary 308
+to its slash-free form, so canonical URLs are unchanged. Measured both ways on the
+same tree: without the flag 175 rows cost two hops and no 410 row answers 410
+without a hop first; with it, 231 rows are single-hop, 48 answer 410 directly and
+nothing is multi-hop. Rewriting the sources to match both forms cannot work,
+because the normalization happens before matching. Stripping the slash at the
+CDN/edge is the alternative if the flag is unwanted.
 
 ### Query parameters
 
@@ -369,10 +379,10 @@ python3 scripts/redirects/build_redirect_map.py
 
 # 2. Build and start the app (next.config.ts reads docs/redirects/redirects.json)
 SHOPIFY_OPTIONAL=1 npm run build
-SHOPIFY_OPTIONAL=1 NODE_ENV=production npx next start -p 3120 &
+SHOPIFY_OPTIONAL=1 NODE_ENV=production PORT=3114 npx next start &
 
 # 3. Verify every row against the running server
-python3 scripts/redirects/verify_redirects.py --base-url http://localhost:3120
+python3 scripts/redirects/verify_redirects.py --base-url http://localhost:3114
 
 # 4. Stop the server
 kill %1
@@ -385,10 +395,19 @@ prototype yet are reported separately and do not fail the run.
 ## Implementation
 
 - `next.config.ts` imports `redirects.json` (136 rules) and returns it from `redirects()`.
-- `gone.json` (48 paths) is not wired up yet. A future route handler (or
-  proxy) should read it and answer 410 with a retired-page body. Until then those
-  paths fall through to the 404 page, which is the correct user experience but the
-  wrong status code for crawlers.
+- `src/proxy.ts` imports `gone.json` (48 paths) and answers each one with a
+  real 410, a small retired-page body, `Cache-Control: public, max-age=3600,
+  must-revalidate` (never `immutable`, so wiring a real page later is not stuck
+  behind a CDN cache) and `X-Robots-Tag: noindex`. The same file also imports
+  `redirects.json`, which is what lets it resolve a trailing-slash legacy URL to
+  its final destination in one hop once `skipTrailingSlashRedirect: true` is set.
+  The one 410 row not in `gone.json` is `/?s=`, a query-only URL no path rule can
+  match.
+- `src/app/blog/page.tsx` and `src/app/blog/[slug]/page.tsx` are **placeholders**
+  so that the 31 redirects pointing at `/blog` and `/blog/<slug>` land on a 200
+  rather than a 404. They render "coming soon", carry `robots: noindex`, and the
+  post route serves only the slugs named in `redirects.json` (anything else 404s).
+  Delete them when the real blog lands.
 - Rows owned by `shopify` are listed for completeness. If the legacy paths keep
   resolving to the Next.js app after cutover, Next serves the 410; if any of them
   is pointed at Shopify instead, Shopify owns the response.

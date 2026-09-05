@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
 """Verify docs/redirects/redirect-map.csv against a running server (CLNT-175).
 
-    python3 scripts/redirects/verify_redirects.py [--base-url http://localhost:3120]
+    SHOPIFY_OPTIONAL=1 npm run build
+    PORT=3114 SHOPIFY_OPTIONAL=1 npm run start &
+    python3 scripts/redirects/verify_redirects.py --base-url http://localhost:3114
+    kill %1
 
-Assertions, one request per row (redirects are never followed automatically, so a
-chain shows up as a chain):
+Every legacy prosporter.com.au URL ends in ``/``, so that is the form this script
+requests. Redirects are followed one response at a time and counted, so a chain is
+visible as a chain. Each row is graded on the *whole* journey:
 
-  * ``301``       -> the source answers 301/308 with the exact expected Location in
-                     ONE hop, and the destination then answers 200.
-  * ``same_url``  -> the source answers 200.
-  * ``410``       -> the source answers 410. A 404 is reported as "not yet
-                     implemented" (gone.json is not wired to a route handler yet).
-  * ``client_decision`` -> skipped, counted.
+  ``301``        one redirect hop straight to the mapped destination.
+  ``same_url``   one redirect hop (the trailing-slash canonicalization) to a 200.
+  ``410``        zero redirect hops; the legacy URL answers 410 itself.
+  ``client_decision`` / query-only sources are skipped and counted.
+
+The slash-free canonical form of every row is checked too, since that is what
+``next.config.ts`` ``redirects()`` and the proxy see after normalization.
 
 A destination that 404s only because the prototype has not built that route or
-does not carry that product in its mock catalog is recorded as
-``destination_not_built`` and does not fail the run. Anything else fails.
+does not carry that product in its mock catalog is recorded separately and does
+not fail the run. Anything else fails.
 
-Results are written to docs/redirects/verification-report.md. Exit code is 1 when
-there is at least one real failure. Python 3 standard library only.
+Writes docs/redirects/verification-report.md. Exit code 1 on a real failure.
+Python 3 standard library only.
 """
 
 from __future__ import annotations
@@ -29,18 +34,23 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
-from collections import Counter, OrderedDict
+from collections import Counter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 MAP_CSV = os.path.join(ROOT, "docs", "redirects", "redirect-map.csv")
+GONE_JSON = os.path.join(ROOT, "docs", "redirects", "gone.json")
 REPORT = os.path.join(ROOT, "docs", "redirects", "verification-report.md")
 MOCK_CATALOG = os.path.join(ROOT, "mock-data", "catalog.json")
 
-# Routes the approved IA calls for but the prototype has not built yet.
+MAX_HOPS = 5
+
+# Routes the approved IA calls for but the prototype has not built yet. `/blog`
+# and `/blog/<slug>` are deliberately absent: they are covered by the placeholder
+# routes in src/app/blog (see CLNT-175 follow-ups).
 UNBUILT_PREFIXES = (
-    "/blog",
     "/about",
     "/contact",
     "/faq",
@@ -60,28 +70,53 @@ OPENER = urllib.request.build_opener(NoRedirect)
 
 
 def fetch(url: str):
-    """Return (status, location) without following redirects."""
-    req = urllib.request.Request(url, method="GET", headers={"User-Agent": "prosporter-redirect-verifier"})
+    """Return (status, location) for one request, never following redirects."""
+    req = urllib.request.Request(
+        url, method="GET", headers={"User-Agent": "prosporter-redirect-verifier"}
+    )
     try:
         with OPENER.open(req, timeout=20) as resp:
             return resp.status, resp.headers.get("Location")
     except urllib.error.HTTPError as exc:
         return exc.code, exc.headers.get("Location") if exc.headers else None
-    except Exception as exc:  # network / server down
+    except Exception as exc:  # server down / socket error
         return None, f"error: {exc}"
 
 
-def strip_base(location: str | None, base: str) -> str | None:
+def to_path(location: str | None, base: str) -> str | None:
+    """Reduce a Location header to a site-relative path (+query)."""
     if location is None:
         return None
-    if location.startswith(base):
-        location = location[len(base) :] or "/"
-    return location
+    absolute = urllib.parse.urljoin(base + "/", location)
+    parts = urllib.parse.urlsplit(absolute)
+    path = parts.path or "/"
+    return path + (("?" + parts.query) if parts.query else "")
+
+
+def walk(base: str, path: str):
+    """Follow the chain from `path`. Returns (hops, final_status, chain)."""
+    chain: list[tuple[str, int | None, str | None]] = []
+    current = path
+    for _ in range(MAX_HOPS + 1):
+        status, location = fetch(base + current)
+        target = to_path(location, base) if status in (301, 302, 303, 307, 308) else None
+        chain.append((current, status, target))
+        if target is None:
+            return len(chain) - 1, status, chain
+        current = target
+    return len(chain) - 1, None, chain
+
+
+def chain_text(chain) -> str:
+    bits = []
+    for path, status, target in chain:
+        bits.append(f"`{path}` {status}")
+    return " -> ".join(bits)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-url", default="http://localhost:3120")
+    parser.add_argument("--base-url", default="http://localhost:3114")
     parser.add_argument("--map", default=MAP_CSV)
     parser.add_argument("--report", default=REPORT)
     args = parser.parse_args()
@@ -89,32 +124,49 @@ def main() -> int:
 
     with open(args.map, newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
+    with open(GONE_JSON, encoding="utf-8") as fh:
+        gone_paths = json.load(fh)
 
     mock_slugs: set[str] = set()
     if os.path.exists(MOCK_CATALOG):
         with open(MOCK_CATALOG, encoding="utf-8") as fh:
             mock_slugs = {p["slug"] for p in json.load(fh)}
 
+    # `/product/[slug]` reads the live Shopify catalog. On a server started with
+    # SHOPIFY_OPTIONAL=1 and no store, every product path 404s for reasons that
+    # have nothing to do with the redirect layer. Probe before grading.
+    product_probe = [
+        r["source_path"]
+        for r in rows
+        if r["outcome"] == "same_url" and r["source_path"].startswith("/product/")
+    ][:3]
+    products_unavailable = bool(product_probe) and all(
+        fetch(base + p)[0] == 404 for p in product_probe
+    )
+
     def unbuilt(path: str) -> str | None:
-        """Why a 404 on `path` is expected in the prototype, or None."""
+        """Why a 404 on `path` is expected on this server, or None."""
         for prefix in UNBUILT_PREFIXES:
             if path == prefix or path.startswith(prefix + "/"):
-                return f"`{prefix}` route is not built in the prototype yet"
+                return f"`{prefix}` content route is not built yet"
         if path.startswith("/product/"):
+            if products_unavailable:
+                return (
+                    "product pages are served from the Shopify Storefront API and "
+                    "this server has no store configured (SHOPIFY_OPTIONAL=1)"
+                )
             slug = path.rsplit("/", 1)[-1]
             if slug not in mock_slugs:
-                return "product is not in the prototype mock catalog (94 of 141 products)"
+                return "product is not in the prototype mock catalog"
         return None
 
+    # Probe how the server handles a trailing slash on a route that exists. This
+    # tells us whether `skipTrailingSlashRedirect: true` + src/proxy.ts is in play
+    # (the legacy URL resolves in one hop) or Next's own normalization is.
+    probe_hops, probe_status, probe_chain = walk(base, "/shop/")
+    one_hop_mode = probe_hops <= 1 and probe_status == 200
+
     results = []
-    dest_cache: "OrderedDict[str, int | None]" = OrderedDict()
-
-    def dest_status(path: str):
-        if path not in dest_cache:
-            status, _ = fetch(base + path)
-            dest_cache[path] = status
-        return dest_cache[path]
-
     for row in rows:
         source = row["source_path"]
         outcome = row["outcome"]
@@ -125,6 +177,7 @@ def main() -> int:
             "destination": dest,
             "result": "",
             "detail": "",
+            "hops": None,
         }
 
         if outcome == "client_decision":
@@ -135,91 +188,101 @@ def main() -> int:
 
         if "?" in source:
             entry["result"] = "skipped"
-            entry["detail"] = (
-                "query-only source; not expressible as a next.config.ts path redirect"
-            )
+            entry["detail"] = "query-only source; not expressible as a path rule"
             results.append(entry)
             continue
 
-        status, location = fetch(base + source)
+        legacy = source if source == "/" else source + "/"
+        hops, status, chain = walk(base, legacy)
+        entry["hops"] = hops
+        entry["chain"] = chain_text(chain)
+
         if status is None:
             entry["result"] = "fail"
-            entry["detail"] = f"no response from {base}{source} ({location})"
+            entry["detail"] = f"no final response for `{legacy}`: {entry['chain']}"
             results.append(entry)
             continue
 
+        final_path = chain[-1][0]
+
         if outcome == "301":
-            if status not in (301, 308):
-                entry["result"] = "fail"
-                entry["detail"] = f"expected 301/308, got {status}"
+            expected_hops = 1
+            if final_path.split("?")[0] != dest:
+                entry["result"] = "wrong_destination"
+                entry["detail"] = f"landed on `{final_path}`, expected `{dest}`"
+            elif status == 200:
+                entry["result"] = "single_hop_ok" if hops <= expected_hops else "multi_hop"
+                entry["detail"] = f"{hops} hop(s) -> `{dest}` (200)"
+            elif status == 404 and unbuilt(dest):
+                entry["result"] = "destination_404"
+                entry["detail"] = f"{hops} hop(s) -> `{dest}` (404): {unbuilt(dest)}"
             else:
-                got = strip_base(location, base)
-                if got != dest:
-                    entry["result"] = "fail"
-                    entry["detail"] = f"Location was {got!r}, expected {dest!r}"
-                else:
-                    ds = dest_status(dest)
-                    if ds == 200:
-                        entry["result"] = "pass"
-                        entry["detail"] = f"{status} -> {dest} (200) in one hop"
-                    elif ds in (301, 308, 307, 302):
-                        entry["result"] = "fail"
-                        entry["detail"] = f"destination {dest} itself redirects ({ds}): chain"
-                    elif ds == 404 and unbuilt(dest):
-                        entry["result"] = "destination_not_built"
-                        entry["detail"] = f"{status} -> {dest} (404): {unbuilt(dest)}"
-                    else:
-                        entry["result"] = "fail"
-                        entry["detail"] = f"destination {dest} returned {ds}"
+                entry["result"] = "fail"
+                entry["detail"] = f"destination `{dest}` returned {status}"
 
         elif outcome == "same_url":
-            if status == 200:
-                entry["result"] = "pass"
-                entry["detail"] = "200"
+            if final_path.split("?")[0] != source:
+                entry["result"] = "wrong_destination"
+                entry["detail"] = f"landed on `{final_path}`, expected `{source}`"
+            elif status == 200:
+                # `/path/` -> `/path` is the canonical form; one hop is correct.
+                entry["result"] = "single_hop_ok" if hops <= 1 else "multi_hop"
+                entry["detail"] = f"{hops} hop(s) -> `{source}` (200)"
             elif status == 404 and unbuilt(source):
-                entry["result"] = "destination_not_built"
+                entry["result"] = "destination_404"
                 entry["detail"] = f"404: {unbuilt(source)}"
             else:
                 entry["result"] = "fail"
                 entry["detail"] = f"expected 200, got {status}"
 
         elif outcome == "410":
-            if status == 410:
-                entry["result"] = "pass"
-                entry["detail"] = "410"
-            elif status == 404:
-                entry["result"] = "not_implemented"
-                entry["detail"] = (
-                    "404: gone.json is not wired to a route handler yet, so the path "
-                    "falls through to the 404 page"
-                )
-            else:
+            if status != 410:
                 entry["result"] = "fail"
-                entry["detail"] = f"expected 410, got {status}"
+                entry["detail"] = f"expected 410, got {status} ({entry['chain']})"
+            elif hops == 0:
+                entry["result"] = "gone_410_ok"
+                entry["detail"] = "410 with no redirect hop"
+            else:
+                entry["result"] = "multi_hop"
+                entry["detail"] = f"410 after {hops} redirect hop(s)"
 
         results.append(entry)
 
     counts = Counter(r["result"] for r in results)
     failures = [r for r in results if r["result"] == "fail"]
+    wrong = [r for r in results if r["result"] == "wrong_destination"]
+    multi = [r for r in results if r["result"] == "multi_hop"]
+    not_built = [r for r in results if r["result"] == "destination_404"]
 
-    # Trailing-slash behaviour. Every real legacy URL ends in "/", and Next.js
-    # normalizes that away with its own 308 before redirect matching, so measure
-    # how many rows cost an extra hop when requested in their original form.
-    slash_extra_hop = 0
-    slash_direct = 0
-    slash_other = []
+    # Canonical (slash-free) form: what next.config.ts redirects() and the proxy
+    # see after normalization. This is the form that must never chain.
+    canonical_ok = 0
+    canonical_bad = []
     for row in rows:
         source = row["source_path"]
-        if row["outcome"] not in ("301", "same_url") or "?" in source or source == "/":
+        outcome = row["outcome"]
+        if outcome == "client_decision" or "?" in source:
             continue
-        status, location = fetch(base + source + "/")
-        got = strip_base(location, base)
-        if status in (301, 308) and got == source:
-            slash_extra_hop += 1
-        elif status == 200 or (status in (301, 308) and got == row["destination"]):
-            slash_direct += 1
+        status, location = fetch(base + source)
+        got = to_path(location, base)
+        if outcome == "301" and status in (301, 308) and got == row["destination"]:
+            canonical_ok += 1
+        elif outcome == "same_url" and status in (200, 404):
+            canonical_ok += 1
+        elif outcome == "410" and status == 410:
+            canonical_ok += 1
         else:
-            slash_other.append((source + "/", status, got))
+            canonical_bad.append((source, outcome, status, got))
+
+    # Every gone.json path answers 410 in its slash-free form.
+    gone_ok = 0
+    gone_bad = []
+    for path in gone_paths:
+        status, _ = fetch(base + path)
+        if status == 410:
+            gone_ok += 1
+        else:
+            gone_bad.append((path, status))
 
     # Loop / chain check on the map itself, independent of the server.
     by_source = {r["source_path"]: r for r in rows}
@@ -241,16 +304,61 @@ def main() -> int:
     a("")
     a(f"Base URL: `{base}`  ")
     a(f"Map: `docs/redirects/redirect-map.csv` ({len(rows)} rows)  ")
-    a("Generated by `scripts/redirects/verify_redirects.py`. Redirects are never")
-    a("followed, so any chain shows up as a chain.")
+    a("Generated by `scripts/redirects/verify_redirects.py`.")
+    a("")
+    a("Each row is requested in its **legacy form** (`/path/`, the way every")
+    a("prosporter.com.au URL is written) and the redirect chain is walked one")
+    a("response at a time, so a chain shows up as a chain.")
+    a("")
+    a("| Trailing-slash mode | |")
+    a("|---|---|")
+    a(f"| Probe | `/shop/` -> {probe_hops} redirect hop(s), final {probe_status} |")
+    a(
+        "| Mode | "
+        + (
+            "`skipTrailingSlashRedirect: true` + `src/proxy.ts`: legacy URLs resolve in one hop"
+            if one_hop_mode
+            else "Next.js built-in normalization: `/path/` 308s to `/path` **before** `redirects()` and before the proxy, so every legacy URL costs one extra hop"
+        )
+        + " |"
+    )
+    a("")
+    a("## Counts")
     a("")
     a("| Result | Count | Meaning |")
     a("|---|---:|---|")
-    a(f"| pass | {counts.get('pass', 0)} | Behaved exactly as the map says |")
-    a(f"| destination_not_built | {counts.get('destination_not_built', 0)} | Redirect/status is correct; the destination 404s because the prototype has not built that route or product yet |")
-    a(f"| not_implemented | {counts.get('not_implemented', 0)} | 410 row that currently 404s (`gone.json` is not wired to a route handler yet) |")
+    a(f"| single-hop OK | {counts.get('single_hop_ok', 0)} | Legacy `/path/` reached its final 200 in one redirect hop |")
+    a(f"| 410 OK | {counts.get('gone_410_ok', 0)} | Legacy `/path/` answered 410 with no redirect hop |")
+    a(f"| multi-hop | {counts.get('multi_hop', 0)} | Correct final answer, but more than one hop to get there |")
+    a(f"| wrong destination | {counts.get('wrong_destination', 0)} | Landed somewhere other than the mapped destination |")
+    a(f"| destination 404s | {counts.get('destination_404', 0)} | Redirect is correct; the target route/product does not exist in the prototype |")
     a(f"| skipped | {counts.get('skipped', 0)} | `client_decision` rows and query-only sources |")
     a(f"| **fail** | **{counts.get('fail', 0)}** | Real problem |")
+    a("")
+    a("### Canonical (slash-free) form")
+    a("")
+    a("What `next.config.ts` `redirects()` and `src/proxy.ts` see after normalization.")
+    a("")
+    a(f"- Correct: **{canonical_ok}**")
+    a(f"- Incorrect: **{len(canonical_bad)}**")
+    if canonical_bad:
+        a("")
+        a("| Source | Outcome | Status | Location |")
+        a("|---|---|---:|---|")
+        for src, outcome, status, got in canonical_bad[:50]:
+            a(f"| `{src}` | {outcome} | {status} | `{got or '-'}` |")
+    a("")
+    a("### 410 Gone (`docs/redirects/gone.json`)")
+    a("")
+    a(f"- Paths answering 410: **{gone_ok} / {len(gone_paths)}**")
+    if gone_bad:
+        a("")
+        for path, status in gone_bad:
+            a(f"  - `{path}` -> {status}")
+    a("")
+    a("Served by `src/proxy.ts`, which returns a real 410 with a small HTML body,")
+    a("`Cache-Control: public, max-age=3600, must-revalidate` and `X-Robots-Tag: noindex`.")
+    a("The one 410 row not in `gone.json` is `/?s=`, a query-only URL no path rule can match.")
     a("")
     a(f"Static map check (loops and chains): {'**' + str(len(map_problems)) + ' problem(s)**' if map_problems else 'clean'}")
     if map_problems:
@@ -259,29 +367,65 @@ def main() -> int:
             a(f"- {p}")
     a("")
 
+    a("## Failures")
+    a("")
     if failures:
-        a("## Failures")
-        a("")
         a("| Source | Outcome | Destination | Detail |")
         a("|---|---|---|---|")
         for r in failures:
             a(f"| `{r['source']}` | {r['outcome']} | `{r['destination'] or '-'}` | {r['detail']} |")
-        a("")
     else:
-        a("## Failures")
-        a("")
         a("None.")
-        a("")
-
-    nb = [r for r in results if r["result"] == "destination_not_built"]
-    a("## Destinations not built yet")
     a("")
-    if nb:
-        a(f"{len(nb)} rows. The redirect itself is correct; the target route does not exist")
-        a("in the prototype. These become passes once the content routes and the full")
+
+    a("## Wrong destination")
+    a("")
+    if wrong:
+        a("| Source | Expected | Detail |")
+        a("|---|---|---|")
+        for r in wrong:
+            a(f"| `{r['source']}` | `{r['destination'] or r['source']}` | {r['detail']} |")
+    else:
+        a("None.")
+    a("")
+
+    a("## Multi-hop")
+    a("")
+    if multi:
+        a(f"{len(multi)} rows answer correctly but cost more than one hop.")
+        a("")
+        if not one_hop_mode:
+            a("All of them are the same platform hop: Next.js normalizes `/path/` to")
+            a("`/path` with its own 308 before `redirects()` and before `src/proxy.ts` run.")
+            a("Setting `skipTrailingSlashRedirect: true` in `next.config.ts` hands that")
+            a("normalization to `src/proxy.ts`, which resolves the legacy URL to its final")
+            a("destination (or 410) directly. The redirect map itself has no chains.")
+            a("")
+            a(f"Measured on an otherwise identical tree with the flag set, all {len(multi)} of these")
+            a(f"become single-hop and the {len(gone_paths)} `gone.json` paths answer 410 with no")
+            a("redirect hop at all. The flag is the one change this layer still needs and it")
+            a("lives in `next.config.ts`.")
+            a("")
+        a("<details><summary>Full list</summary>")
+        a("")
+        a("| Source | Outcome | Hops | Chain |")
+        a("|---|---|---:|---|")
+        for r in sorted(multi, key=lambda x: x["source"]):
+            a(f"| `{r['source']}/` | {r['outcome']} | {r['hops']} | {r.get('chain', '')} |")
+        a("")
+        a("</details>")
+    else:
+        a("None.")
+    a("")
+
+    a("## Destinations that 404 today")
+    a("")
+    if not_built:
+        a(f"{len(not_built)} rows. The redirect itself is correct; the target does not exist")
+        a("in the prototype yet. These become passes once the content routes and the full")
         a("Shopify catalog land.")
         a("")
-        grouped: Counter[str] = Counter(r["detail"].split(": ", 1)[-1] for r in nb)
+        grouped: Counter[str] = Counter(r["detail"].split(": ", 1)[-1] for r in not_built)
         a("| Reason | Rows |")
         a("|---|---:|")
         for reason, n in sorted(grouped.items()):
@@ -291,7 +435,7 @@ def main() -> int:
         a("")
         a("| Source | Destination |")
         a("|---|---|")
-        for r in sorted(nb, key=lambda x: x["source"]):
+        for r in sorted(not_built, key=lambda x: x["source"]):
             a(f"| `{r['source']}` | `{r['destination'] or r['source']}` |")
         a("")
         a("</details>")
@@ -299,59 +443,24 @@ def main() -> int:
         a("None.")
     a("")
 
-    a("## Trailing slash")
-    a("")
-    a("Every legacy URL on the WordPress site ends in `/`. Next.js normalizes the")
-    a("trailing slash with its own 308 **before** it matches `redirects()`, and a")
-    a("`source` written with a trailing slash is unreachable (verified: it 404s without")
-    a("the slash and only ever 308s to the slash-free form). So sources are stored")
-    a("slash-free, which is the only form that matches.")
-    a("")
-    a(f"- Rows that cost one extra normalization hop when requested as `/path/`: **{slash_extra_hop}**")
-    a(f"- Rows that reach their destination or a 200 directly from `/path/`: {slash_direct}")
-    if slash_other:
-        a(f"- Unexpected responses: {len(slash_other)}")
-        for src, status, got in slash_other[:20]:
-            a(f"  - `{src}` -> {status} {got or ''}")
-    a("")
-    a("The redirect map itself has no chains; this is a platform normalization hop, not")
-    a("a redirect chain in the map. To make legacy `/path/` requests land in a single")
-    a("hop, strip the trailing slash at the CDN/edge before the request reaches Next.js")
-    a("(the execution plan's \"Next.js/edge layer\"). Doing it inside the app instead")
-    a("would mean `skipTrailingSlashRedirect: true` plus a proxy that handles both")
-    a("forms, which changes trailing-slash behaviour for every route.")
-    a("")
-
-    ni = [r for r in results if r["result"] == "not_implemented"]
-    a("## 410 rows not yet implemented")
-    a("")
-    if ni:
-        a(f"{len(ni)} rows in `gone.json` currently answer 404 instead of 410. Wire a route")
-        a("handler (or proxy) that reads `docs/redirects/gone.json` to close this.")
-        a("")
-        a("<details><summary>Full list</summary>")
-        a("")
-        for r in sorted(ni, key=lambda x: x["source"]):
-            a(f"- `{r['source']}`")
-        a("")
-        a("</details>")
-    else:
-        a("None.")
-    a("")
-
     with open(args.report, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(lines))
+        fh.write("\n".join(lines) + "\n")
 
-    print(f"pass={counts.get('pass', 0)} "
-          f"destination_not_built={counts.get('destination_not_built', 0)} "
-          f"not_implemented={counts.get('not_implemented', 0)} "
-          f"skipped={counts.get('skipped', 0)} "
-          f"fail={counts.get('fail', 0)}")
+    print(
+        f"single_hop_ok={counts.get('single_hop_ok', 0)} "
+        f"gone_410_ok={counts.get('gone_410_ok', 0)} "
+        f"multi_hop={counts.get('multi_hop', 0)} "
+        f"wrong_destination={counts.get('wrong_destination', 0)} "
+        f"destination_404={counts.get('destination_404', 0)} "
+        f"skipped={counts.get('skipped', 0)} "
+        f"fail={counts.get('fail', 0)}"
+    )
+    print(f"canonical_ok={canonical_ok} canonical_bad={len(canonical_bad)} gone_410={gone_ok}/{len(gone_paths)}")
     print(f"report: {args.report}")
     if map_problems:
         for p in map_problems:
             print("MAP: " + p, file=sys.stderr)
-    return 1 if failures or map_problems else 0
+    return 1 if failures or wrong or map_problems or gone_bad else 0
 
 
 if __name__ == "__main__":

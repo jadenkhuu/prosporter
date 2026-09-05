@@ -12,6 +12,9 @@ import legacyRedirects from "./docs/redirects/redirects.json";
 type Redirect = { source: string; destination: string; permanent: boolean };
 
 const nextConfig: NextConfig = {
+  // Trailing-slash normalisation is done in src/proxy.ts so a legacy WordPress
+  // URL ("/product/x/") reaches its mapped destination or a 410 in one hop.
+  skipTrailingSlashRedirect: true,
   images: {
     // Shopify serves every product image from its CDN; nothing else is allowed.
     remotePatterns: [
