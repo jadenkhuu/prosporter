@@ -1,0 +1,26 @@
+[
+  {
+    "url": "https://fixtures.invalid/img/team-tee-front.jpg",
+    "status": 200,
+    "type": "image/jpeg",
+    "bytes": 1024
+  },
+  {
+    "url": "https://fixtures.invalid/img/beach-shorts.jpg",
+    "status": 200,
+    "type": "image/jpeg",
+    "bytes": 1024
+  },
+  {
+    "url": "https://fixtures.invalid/img/socks.jpg",
+    "status": 404,
+    "type": "",
+    "bytes": 0
+  },
+  {
+    "url": "https://fixtures.invalid/img/jersey.jpg",
+    "status": 200,
+    "type": "image/jpeg",
+    "bytes": 1024
+  }
+]

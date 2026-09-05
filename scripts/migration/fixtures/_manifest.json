@@ -1,0 +1,6 @@
+{
+  "started": "2026-01-05T00:00:00+00:00",
+  "finished": "2026-01-05T00:05:00+00:00",
+  "base": "https://fixtures.invalid",
+  "note": "Synthetic fixture snapshot. Contains no real ProSporter data."
+}

@@ -1,0 +1,32 @@
+[
+  {
+    "id": 50,
+    "name": "Jerseys",
+    "slug": "jerseys"
+  },
+  {
+    "id": 56,
+    "name": "Shorts",
+    "slug": "shorts"
+  },
+  {
+    "id": 58,
+    "name": "Socks",
+    "slug": "socks"
+  },
+  {
+    "id": 59,
+    "name": "T-Shirts",
+    "slug": "t-shirts"
+  },
+  {
+    "id": 99,
+    "name": "Beach Volleyball",
+    "slug": "beach-volleyball"
+  },
+  {
+    "id": 140,
+    "name": "ProVolley Academy",
+    "slug": "provolley-academy"
+  }
+]

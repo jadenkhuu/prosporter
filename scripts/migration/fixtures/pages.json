@@ -1,0 +1,33 @@
+[
+  {
+    "id": 201,
+    "slug": "about-fixture",
+    "title": {
+      "rendered": "About Fixture"
+    },
+    "content": {
+      "rendered": "<p>Synthetic about page.</p>"
+    },
+    "status": "publish",
+    "date_gmt": "2026-01-05T00:00:00",
+    "link": "https://fixtures.invalid/about-fixture/",
+    "yoast_head_json": {
+      "title": "About Fixture",
+      "description": "About the fixture store."
+    }
+  },
+  {
+    "id": 202,
+    "slug": "cart",
+    "title": {
+      "rendered": "Cart"
+    },
+    "content": {
+      "rendered": ""
+    },
+    "status": "publish",
+    "date_gmt": "2026-01-05T00:00:00",
+    "link": "https://fixtures.invalid/cart/",
+    "yoast_head_json": {}
+  }
+]

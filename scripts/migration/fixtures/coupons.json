@@ -1,0 +1,27 @@
+[
+  {
+    "id": 401,
+    "code": "fixture20",
+    "discount_type": "percent",
+    "amount": "20.00",
+    "status": "publish",
+    "free_shipping": false,
+    "individual_use": true,
+    "date_created_gmt": "2026-01-05T00:00:00",
+    "date_expires_gmt": "2026-12-31T00:00:00",
+    "minimum_amount": "0.00",
+    "maximum_amount": "0.00",
+    "usage_limit": null,
+    "usage_limit_per_user": null,
+    "product_ids": [],
+    "product_categories": [],
+    "excluded_product_ids": [],
+    "meta_data": [
+      {
+        "id": 1,
+        "key": "_acfw_enable_date_range_schedule",
+        "value": "yes"
+      }
+    ]
+  }
+]

@@ -46,3 +46,7 @@ next-env.d.ts
 
 # raw migration exports (contain customer/order data)
 /exports/
+
+# python
+__pycache__/
+*.pyc

@@ -1,0 +1,365 @@
+[
+  {
+    "id": 101,
+    "name": "Fixture Team Tee",
+    "slug": "fixture-team-tee",
+    "status": "publish",
+    "type": "variable",
+    "sku": "",
+    "price": "40.00",
+    "regular_price": "40.00",
+    "sale_price": "",
+    "description": "<p>Synthetic fixture product.</p>",
+    "short_description": "",
+    "permalink": "https://fixtures.invalid/product/fixture-team-tee/",
+    "date_created_gmt": "2026-01-05T00:00:00",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Color",
+        "slug": "color",
+        "position": 0,
+        "visible": true,
+        "variation": true,
+        "options": [
+          "Navy Blue",
+          "Black"
+        ]
+      },
+      {
+        "id": 0,
+        "name": "Size",
+        "slug": "size",
+        "position": 1,
+        "visible": true,
+        "variation": true,
+        "options": [
+          "SM",
+          "XXL"
+        ]
+      }
+    ],
+    "categories": [
+      {
+        "id": 59,
+        "name": "T-Shirts",
+        "slug": "t-shirts"
+      }
+    ],
+    "tags": [
+      {
+        "id": 900,
+        "name": "Fixture",
+        "slug": "fixture"
+      }
+    ],
+    "brands": [],
+    "images": [
+      {
+        "id": 9101,
+        "src": "https://fixtures.invalid/img/team-tee-front.jpg",
+        "alt": "Fixture team tee front",
+        "name": "team-tee-front.jpg"
+      }
+    ],
+    "variations": [
+      1011,
+      1012,
+      1013,
+      1014
+    ],
+    "manage_stock": false,
+    "stock_quantity": null,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "0.25",
+    "virtual": false,
+    "tax_status": "taxable",
+    "tax_class": "",
+    "meta_data": [],
+    "yoast_head_json": {
+      "title": "Fixture Team Tee",
+      "description": "A fixture tee."
+    },
+    "global_unique_id": ""
+  },
+  {
+    "id": 102,
+    "name": "Fixture Beach Shorts",
+    "slug": "fixture-beach-shorts",
+    "status": "publish",
+    "type": "variable",
+    "sku": "",
+    "price": "55.00",
+    "regular_price": "55.00",
+    "sale_price": "",
+    "description": "<p>Synthetic fixture product.</p>",
+    "short_description": "",
+    "permalink": "https://fixtures.invalid/product/fixture-beach-shorts/",
+    "date_created_gmt": "2026-01-05T00:00:00",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Colour",
+        "slug": "colour",
+        "position": 0,
+        "visible": true,
+        "variation": true,
+        "options": [
+          "Gray",
+          "Light Gray"
+        ]
+      }
+    ],
+    "categories": [
+      {
+        "id": 56,
+        "name": "Shorts",
+        "slug": "shorts"
+      },
+      {
+        "id": 99,
+        "name": "Beach Volleyball",
+        "slug": "beach-volleyball"
+      }
+    ],
+    "tags": [],
+    "brands": [],
+    "images": [
+      {
+        "id": 9102,
+        "src": "https://fixtures.invalid/img/beach-shorts.jpg",
+        "alt": "",
+        "name": "beach-shorts.jpg"
+      }
+    ],
+    "variations": [
+      1021,
+      1022
+    ],
+    "manage_stock": false,
+    "stock_quantity": null,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "",
+    "virtual": false,
+    "tax_status": "taxable",
+    "tax_class": "",
+    "meta_data": [],
+    "yoast_head_json": {},
+    "global_unique_id": ""
+  },
+  {
+    "id": 103,
+    "name": "Fixture Court Socks",
+    "slug": "fixture-court-socks",
+    "status": "publish",
+    "type": "variable",
+    "sku": "",
+    "price": "14.95",
+    "regular_price": "14.95",
+    "sale_price": "",
+    "description": "<p>Synthetic fixture product.</p>",
+    "short_description": "",
+    "permalink": "https://fixtures.invalid/product/fixture-court-socks/",
+    "date_created_gmt": "2026-01-05T00:00:00",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Size",
+        "slug": "size",
+        "position": 0,
+        "visible": true,
+        "variation": true,
+        "options": [
+          "36-41",
+          "42-46"
+        ]
+      }
+    ],
+    "categories": [
+      {
+        "id": 58,
+        "name": "Socks",
+        "slug": "socks"
+      }
+    ],
+    "tags": [],
+    "brands": [],
+    "images": [
+      {
+        "id": 9103,
+        "src": "https://fixtures.invalid/img/socks.jpg",
+        "alt": "Fixture socks",
+        "name": "socks.jpg"
+      }
+    ],
+    "variations": [
+      1031,
+      1032
+    ],
+    "manage_stock": false,
+    "stock_quantity": null,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "",
+    "virtual": false,
+    "tax_status": "taxable",
+    "tax_class": "",
+    "meta_data": [],
+    "yoast_head_json": {},
+    "global_unique_id": ""
+  },
+  {
+    "id": 104,
+    "name": "Fixture ProVolley Jersey",
+    "slug": "fixture-provolley-jersey",
+    "status": "publish",
+    "type": "variable",
+    "sku": "",
+    "price": "99.00",
+    "regular_price": "99.00",
+    "sale_price": "",
+    "description": "<p>Synthetic fixture product.</p>",
+    "short_description": "",
+    "permalink": "https://fixtures.invalid/product/fixture-provolley-jersey/",
+    "date_created_gmt": "2026-01-05T00:00:00",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Color",
+        "slug": "color",
+        "position": 0,
+        "visible": true,
+        "variation": true,
+        "options": [
+          "Navy"
+        ]
+      },
+      {
+        "id": 0,
+        "name": "Size",
+        "slug": "size",
+        "position": 1,
+        "visible": true,
+        "variation": true,
+        "options": [
+          "S",
+          "M"
+        ]
+      },
+      {
+        "id": 0,
+        "name": "Condition",
+        "slug": "condition",
+        "position": 2,
+        "visible": true,
+        "variation": true,
+        "options": [
+          "With Surname",
+          "Without Surname"
+        ]
+      },
+      {
+        "id": 0,
+        "name": "Number",
+        "slug": "number",
+        "position": 3,
+        "visible": true,
+        "variation": true,
+        "options": [
+          "7",
+          "9"
+        ]
+      }
+    ],
+    "categories": [
+      {
+        "id": 50,
+        "name": "Jerseys",
+        "slug": "jerseys"
+      },
+      {
+        "id": 140,
+        "name": "ProVolley Academy",
+        "slug": "provolley-academy"
+      }
+    ],
+    "tags": [],
+    "brands": [],
+    "images": [
+      {
+        "id": 9104,
+        "src": "https://fixtures.invalid/img/jersey.jpg",
+        "alt": "Fixture jersey",
+        "name": "jersey.jpg"
+      }
+    ],
+    "variations": [
+      1041,
+      1042
+    ],
+    "manage_stock": false,
+    "stock_quantity": null,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "",
+    "virtual": false,
+    "tax_status": "taxable",
+    "tax_class": "",
+    "meta_data": [],
+    "yoast_head_json": {},
+    "global_unique_id": ""
+  },
+  {
+    "id": 105,
+    "name": "Fixture Unisex Hats",
+    "slug": "fixture-unisex-hats",
+    "status": "publish",
+    "type": "variable",
+    "sku": "",
+    "price": "25.00",
+    "regular_price": "25.00",
+    "sale_price": "",
+    "description": "<p>Synthetic fixture product.</p>",
+    "short_description": "",
+    "permalink": "https://fixtures.invalid/product/fixture-unisex-hats/",
+    "date_created_gmt": "2026-01-05T00:00:00",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Hats",
+        "slug": "hats",
+        "position": 0,
+        "visible": true,
+        "variation": true,
+        "options": [
+          "Unisex Hats"
+        ]
+      }
+    ],
+    "categories": [],
+    "tags": [],
+    "brands": [],
+    "images": [],
+    "variations": [
+      1051
+    ],
+    "manage_stock": false,
+    "stock_quantity": null,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "",
+    "virtual": false,
+    "tax_status": "taxable",
+    "tax_class": "",
+    "meta_data": [],
+    "yoast_head_json": {},
+    "global_unique_id": ""
+  }
+]

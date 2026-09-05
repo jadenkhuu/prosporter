@@ -1,0 +1,14 @@
+[
+  {
+    "id": 3,
+    "name": "Color",
+    "slug": "pa_color",
+    "type": "select"
+  },
+  {
+    "id": 4,
+    "name": "Size",
+    "slug": "pa_size",
+    "type": "select"
+  }
+]

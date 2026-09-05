@@ -1,0 +1,83 @@
+[
+  {
+    "id": 501,
+    "role": "customer",
+    "email": "fixture.one@example.invalid",
+    "first_name": "Fixture",
+    "last_name": "One",
+    "username": "fixture-one",
+    "date_created_gmt": "2026-01-05T00:00:00",
+    "billing": {
+      "first_name": "Fixture",
+      "last_name": "One",
+      "company": "",
+      "address_1": "1 Fixture Street",
+      "address_2": "",
+      "city": "Sydney",
+      "state": "NSW",
+      "postcode": "2000",
+      "country": "AU",
+      "email": "fixture.one@example.invalid",
+      "phone": "+61400000001"
+    },
+    "shipping": {
+      "first_name": "Fixture",
+      "last_name": "One",
+      "company": "",
+      "address_1": "1 Fixture Street",
+      "address_2": "",
+      "city": "Sydney",
+      "state": "NSW",
+      "postcode": "2000",
+      "country": "AU",
+      "phone": ""
+    },
+    "meta_data": []
+  },
+  {
+    "id": 502,
+    "role": "customer",
+    "email": "fixture.two@example.invalid",
+    "first_name": "Fixture",
+    "last_name": "Two",
+    "username": "fixture-two",
+    "date_created_gmt": "2026-01-05T00:00:00",
+    "billing": {
+      "first_name": "",
+      "last_name": "",
+      "company": "",
+      "address_1": "",
+      "address_2": "",
+      "city": "",
+      "state": "",
+      "postcode": "",
+      "country": "",
+      "email": "fixture.two@example.invalid",
+      "phone": ""
+    },
+    "shipping": {
+      "first_name": "",
+      "last_name": "",
+      "company": "",
+      "address_1": "",
+      "address_2": "",
+      "city": "",
+      "state": "",
+      "postcode": "",
+      "country": ""
+    },
+    "meta_data": []
+  },
+  {
+    "id": 503,
+    "role": "administrator",
+    "email": "fixture.admin@example.invalid",
+    "first_name": "Fixture",
+    "last_name": "Admin",
+    "username": "fixture-admin",
+    "date_created_gmt": "2026-01-05T00:00:00",
+    "billing": {},
+    "shipping": {},
+    "meta_data": []
+  }
+]

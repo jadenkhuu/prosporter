@@ -1,0 +1,30 @@
+[
+  {
+    "id": 301,
+    "slug": "fixture-post",
+    "title": {
+      "rendered": "Fixture Post"
+    },
+    "content": {
+      "rendered": "<p>Synthetic article body.</p>"
+    },
+    "excerpt": {
+      "rendered": "Synthetic excerpt."
+    },
+    "status": "publish",
+    "author": 1,
+    "date_gmt": "2026-01-05T00:00:00",
+    "tags": [
+      901
+    ],
+    "categories": [
+      801
+    ],
+    "link": "https://fixtures.invalid/fixture-post/",
+    "yoast_head_json": {
+      "title": "Fixture Post",
+      "author": "Fixture Author",
+      "description": "A synthetic post."
+    }
+  }
+]

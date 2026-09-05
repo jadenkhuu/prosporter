@@ -1,0 +1,403 @@
+[
+  {
+    "id": 1011,
+    "parent_id": 101,
+    "type": "variation",
+    "sku": "FIX-TEE-NVY-SM",
+    "price": "40.00",
+    "regular_price": "40.00",
+    "sale_price": "",
+    "status": "publish",
+    "manage_stock": true,
+    "stock_quantity": 10,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "0.25",
+    "virtual": false,
+    "tax_status": "taxable",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Color",
+        "slug": "color",
+        "option": "Navy Blue"
+      },
+      {
+        "id": 0,
+        "name": "Size",
+        "slug": "size",
+        "option": "SM"
+      }
+    ],
+    "image": null,
+    "menu_order": 0,
+    "meta_data": [],
+    "global_unique_id": "",
+    "date_created_gmt": "2026-01-05T00:00:00"
+  },
+  {
+    "id": 1012,
+    "parent_id": 101,
+    "type": "variation",
+    "sku": "FIX-TEE-NVY-XXL",
+    "price": "32.00",
+    "regular_price": "40.00",
+    "sale_price": "32.00",
+    "status": "publish",
+    "manage_stock": true,
+    "stock_quantity": 10,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "0.25",
+    "virtual": false,
+    "tax_status": "taxable",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Color",
+        "slug": "color",
+        "option": "Navy Blue"
+      },
+      {
+        "id": 0,
+        "name": "Size",
+        "slug": "size",
+        "option": "XXL"
+      }
+    ],
+    "image": null,
+    "menu_order": 1,
+    "meta_data": [],
+    "global_unique_id": "",
+    "date_created_gmt": "2026-01-05T00:00:00"
+  },
+  {
+    "id": 1013,
+    "parent_id": 101,
+    "type": "variation",
+    "sku": "FIX-TEE-BLK-SM",
+    "price": "40.00",
+    "regular_price": "40.00",
+    "sale_price": "",
+    "status": "publish",
+    "manage_stock": true,
+    "stock_quantity": 10,
+    "stock_status": "instock",
+    "backorders": "notify",
+    "backorders_allowed": true,
+    "weight": "0.25",
+    "virtual": false,
+    "tax_status": "taxable",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Color",
+        "slug": "color",
+        "option": "Black"
+      },
+      {
+        "id": 0,
+        "name": "Size",
+        "slug": "size",
+        "option": "SM"
+      }
+    ],
+    "image": null,
+    "menu_order": 2,
+    "meta_data": [],
+    "global_unique_id": "",
+    "date_created_gmt": "2026-01-05T00:00:00"
+  },
+  {
+    "id": 1014,
+    "parent_id": 101,
+    "type": "variation",
+    "sku": "FIX-TEE-BLK-XXL",
+    "price": "40.00",
+    "regular_price": "40.00",
+    "sale_price": "",
+    "status": "publish",
+    "manage_stock": true,
+    "stock_quantity": 10,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "0.25",
+    "virtual": false,
+    "tax_status": "taxable",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Color",
+        "slug": "color",
+        "option": "Black"
+      },
+      {
+        "id": 0,
+        "name": "Size",
+        "slug": "size",
+        "option": "XXL"
+      }
+    ],
+    "image": null,
+    "menu_order": 3,
+    "meta_data": [],
+    "global_unique_id": "",
+    "date_created_gmt": "2026-01-05T00:00:00"
+  },
+  {
+    "id": 1021,
+    "parent_id": 102,
+    "type": "variation",
+    "sku": "",
+    "price": "55.00",
+    "regular_price": "55.00",
+    "sale_price": "",
+    "status": "publish",
+    "manage_stock": true,
+    "stock_quantity": 10,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "",
+    "virtual": false,
+    "tax_status": "taxable",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Colour",
+        "slug": "colour",
+        "option": "Gray"
+      }
+    ],
+    "image": null,
+    "menu_order": 0,
+    "meta_data": [],
+    "global_unique_id": "",
+    "date_created_gmt": "2026-01-05T00:00:00"
+  },
+  {
+    "id": 1022,
+    "parent_id": 102,
+    "type": "variation",
+    "sku": "",
+    "price": "55.00",
+    "regular_price": "55.00",
+    "sale_price": "",
+    "status": "publish",
+    "manage_stock": true,
+    "stock_quantity": 10,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "",
+    "virtual": false,
+    "tax_status": "taxable",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Colour",
+        "slug": "colour",
+        "option": "Light Gray"
+      }
+    ],
+    "image": null,
+    "menu_order": 1,
+    "meta_data": [],
+    "global_unique_id": "",
+    "date_created_gmt": "2026-01-05T00:00:00"
+  },
+  {
+    "id": 1031,
+    "parent_id": 103,
+    "type": "variation",
+    "sku": "FIX-DUP",
+    "price": "14.95",
+    "regular_price": "14.95",
+    "sale_price": "",
+    "status": "publish",
+    "manage_stock": true,
+    "stock_quantity": 10,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "",
+    "virtual": false,
+    "tax_status": "taxable",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Size",
+        "slug": "size",
+        "option": "36-41"
+      }
+    ],
+    "image": null,
+    "menu_order": 0,
+    "meta_data": [],
+    "global_unique_id": "",
+    "date_created_gmt": "2026-01-05T00:00:00"
+  },
+  {
+    "id": 1032,
+    "parent_id": 103,
+    "type": "variation",
+    "sku": "FIX-DUP",
+    "price": "14.95",
+    "regular_price": "14.95",
+    "sale_price": "",
+    "status": "publish",
+    "manage_stock": true,
+    "stock_quantity": 10,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "",
+    "virtual": false,
+    "tax_status": "taxable",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Size",
+        "slug": "size",
+        "option": "42-46"
+      }
+    ],
+    "image": null,
+    "menu_order": 1,
+    "meta_data": [],
+    "global_unique_id": "",
+    "date_created_gmt": "2026-01-05T00:00:00"
+  },
+  {
+    "id": 1041,
+    "parent_id": 104,
+    "type": "variation",
+    "sku": "FIX-JSY-7",
+    "price": "99.00",
+    "regular_price": "99.00",
+    "sale_price": "",
+    "status": "publish",
+    "manage_stock": true,
+    "stock_quantity": 10,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "",
+    "virtual": false,
+    "tax_status": "taxable",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Color",
+        "slug": "color",
+        "option": "Navy"
+      },
+      {
+        "id": 0,
+        "name": "Size",
+        "slug": "size",
+        "option": "S"
+      },
+      {
+        "id": 0,
+        "name": "Condition",
+        "slug": "condition",
+        "option": "With Surname"
+      },
+      {
+        "id": 0,
+        "name": "Number",
+        "slug": "number",
+        "option": "7"
+      }
+    ],
+    "image": null,
+    "menu_order": 0,
+    "meta_data": [],
+    "global_unique_id": "",
+    "date_created_gmt": "2026-01-05T00:00:00"
+  },
+  {
+    "id": 1042,
+    "parent_id": 104,
+    "type": "variation",
+    "sku": "FIX-JSY-9",
+    "price": "99.00",
+    "regular_price": "99.00",
+    "sale_price": "",
+    "status": "publish",
+    "manage_stock": true,
+    "stock_quantity": 10,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "",
+    "virtual": false,
+    "tax_status": "taxable",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Color",
+        "slug": "color",
+        "option": "Navy"
+      },
+      {
+        "id": 0,
+        "name": "Size",
+        "slug": "size",
+        "option": "M"
+      },
+      {
+        "id": 0,
+        "name": "Condition",
+        "slug": "condition",
+        "option": "Without Surname"
+      },
+      {
+        "id": 0,
+        "name": "Number",
+        "slug": "number",
+        "option": "9"
+      }
+    ],
+    "image": null,
+    "menu_order": 1,
+    "meta_data": [],
+    "global_unique_id": "",
+    "date_created_gmt": "2026-01-05T00:00:00"
+  },
+  {
+    "id": 1051,
+    "parent_id": 105,
+    "type": "variation",
+    "sku": "FIX-HAT",
+    "price": "",
+    "regular_price": "",
+    "sale_price": "",
+    "status": "publish",
+    "manage_stock": false,
+    "stock_quantity": null,
+    "stock_status": "instock",
+    "backorders": "no",
+    "backorders_allowed": false,
+    "weight": "",
+    "virtual": false,
+    "tax_status": "taxable",
+    "attributes": [
+      {
+        "id": 0,
+        "name": "Hats",
+        "slug": "hats",
+        "option": "Unisex Hats"
+      }
+    ],
+    "image": null,
+    "menu_order": 0,
+    "meta_data": [],
+    "global_unique_id": "",
+    "date_created_gmt": "2026-01-05T00:00:00"
+  }
+]
