@@ -26,6 +26,21 @@ added to any sales channel.
     ``customerSelection``.
   * product media is added with ``productUpdate(media: [...])`` and variant
     images with ``productVariantsBulkUpdate(variants: [{id, mediaId}])``.
+  * ``publishablePublish`` takes a single publishable id, so the publish stage
+    batches with aliased mutation fields instead of a list argument.
+
+Beyond the loader this module owns two post-load operations:
+
+  * ``publish`` (driven by ``run.py publish``) exposes loaded products and
+    collections to a named publication and, with ``activate_published``, sets
+    ACTIVE only the products whose source status was ``publish``.
+  * ``verify`` (CLI, read-only) compares the ledger with the live store.
+
+CLI::
+
+    python3 scripts/migration/shopify_target.py status --store <ledger>
+    python3 scripts/migration/shopify_target.py verify --store <ledger>
+    python3 scripts/migration/shopify_target.py purge  --store <ledger> [--yes]
 """
 from __future__ import annotations
 
@@ -34,7 +49,7 @@ import time
 import uuid
 from pathlib import Path
 
-from common import SHOPIFY_API_VERSION, checksum, read_json, write_json
+from common import SHOPIFY_API_VERSION, checksum, read_json, utc_now, write_json
 from loader import FakeShopifyTarget
 from shopify_admin import AdminClient, ShopifyAdminError
 
@@ -42,6 +57,17 @@ from shopify_admin import AdminClient, ShopifyAdminError
 # time. Offsets are only cosmetic for publish dates.
 SOURCE_TZ_OFFSET = "+10:00"
 MEDIA_READY_WAIT_SECONDS = 90
+# ``nodes(ids:)`` accepts up to 250 ids; 50 keeps a single request's query cost
+# well inside the store's bucket even with the fattest fragment.
+NODE_BATCH = 50
+# Aliased mutations per document for the publish stage.
+PUBLISH_BATCH = 10
+
+
+def _chunks(items, size):
+    items = list(items)
+    for start in range(0, len(items), max(1, size)):
+        yield items[start:start + size]
 
 
 def _dt(value):
@@ -870,6 +896,341 @@ class ShopifyAdminTarget(FakeShopifyTarget):
     def _mapping_index(self, name):
         return ((read_json(self.mapping_path) if self.mapping_path.exists() else {}).get("indexes") or {}).get(name, {})
 
+    # ----------------------------------------------------------------- publish
+    # Step 10 of the execution plan: expose the loaded catalog to a sales
+    # channel. The load itself never publishes, so this is a separate, explicit
+    # stage run after QA (``run.py publish``).
+    #
+    # Schema note (introspected on the client store, Admin API 2026-07):
+    # ``publishablePublish(id: ID!, input: [PublicationInput!]!)`` takes exactly
+    # one publishable id -- there is no multi-id publish mutation, and
+    # ``PublicationInput`` only carries ``publicationId`` / ``publishDate``. So
+    # "batching" means several aliased ``publishablePublish`` fields in one
+    # GraphQL document, which is what ``_batch_mutate`` does.
+
+    def publication(self, name: str) -> dict:
+        """Resolve a publication by name. Read-only."""
+        data = self.client.graphql(
+            "query($n:Int!){ publications(first:$n){ nodes{ id name } } }", {"n": 50}
+        )
+        nodes = (data.get("publications") or {}).get("nodes") or []
+        found = next((n for n in nodes if n["name"] == name), None)
+        if not found:
+            raise ShopifyAdminError(
+                f"no publication named {name!r}; have {[n['name'] for n in nodes]}"
+            )
+        return {"id": found["id"], "name": found["name"]}
+
+    def publish_targets(self, only_products=None) -> list[dict]:
+        """Every publishable object in the ledger, in publish order. No network.
+
+        ``only_products`` narrows the run to those product handles and drops
+        collections, so a QA publish stays as small as the smoke load did.
+        """
+        only = set(only_products) if only_products else None
+        items = []
+        for key, entry in sorted(self.state["objects"].get("Product", {}).items()):
+            if only is not None and key not in only:
+                continue
+            items.append({
+                "resource": "Product",
+                "key": key,
+                "id": entry["id"],
+                "source_status": (entry.get("payload") or {}).get("source_status"),
+            })
+        if only is None:
+            for key, entry in sorted(self.state["objects"].get("Collection", {}).items()):
+                items.append({"resource": "Collection", "key": key, "id": entry["id"],
+                              "source_status": None})
+        return items
+
+    PUBLISH_STATE_QUERY = (
+        "query($ids:[ID!]!){ nodes(ids:$ids){ id __typename"
+        " ... on Product { handle status resourcePublicationsV2(first:25){"
+        " nodes{ isPublished publication{ id } } } }"
+        " ... on Collection { handle resourcePublicationsV2(first:25){"
+        " nodes{ isPublished publication{ id } } } } } }"
+    )
+
+    def publication_state(self, gids, publication_gid: str, batch_size: int = NODE_BATCH) -> dict:
+        """{gid: {"exists", "status", "published"}} read with batched ``nodes(ids:)``."""
+        state: dict[str, dict] = {}
+        for chunk in _chunks(list(gids), batch_size):
+            data = self.client.graphql(self.PUBLISH_STATE_QUERY, {"ids": chunk})
+            for gid, node in zip(chunk, data.get("nodes") or []):
+                if node is None:
+                    state[gid] = {"exists": False, "status": None, "published": False}
+                    continue
+                published = any(
+                    n.get("isPublished") and (n.get("publication") or {}).get("id") == publication_gid
+                    for n in ((node.get("resourcePublicationsV2") or {}).get("nodes") or [])
+                )
+                state[node["id"]] = {"exists": True, "status": node.get("status"),
+                                     "published": published}
+        return state
+
+    def plan_publish(self, publication_name: str, activate_published: bool = False,
+                     only_products=None) -> dict:
+        """Read the live publication/status state and decide what has to change.
+
+        Pure planning on top of two read-only queries, so it is unit-testable
+        with a stub client. Objects already published (and already ACTIVE when
+        ``activate_published`` is set) are reported ``unchanged``; drafts in the
+        source stay DRAFT whatever the flag says.
+        """
+        publication = self.publication(publication_name)
+        targets = self.publish_targets(only_products)
+        state = self.publication_state([t["id"] for t in targets], publication["id"])
+        items, counts = [], {"total": len(targets), "publish": 0, "activate": 0,
+                             "unchanged": 0, "missing": 0}
+        for target in targets:
+            live = state.get(target["id"], {"exists": False, "status": None, "published": False})
+            item = dict(target)
+            item["live_status"] = live.get("status")
+            item["published"] = bool(live.get("published"))
+            actions = []
+            if not live.get("exists"):
+                item["actions"] = []
+                item["reason"] = "object in the ledger no longer exists on the store"
+                counts["missing"] += 1
+                items.append(item)
+                continue
+            if not live["published"]:
+                actions.append("publish")
+            wants_active = (
+                activate_published
+                and target["resource"] == "Product"
+                and target.get("source_status") == "publish"
+            )
+            if wants_active and live.get("status") != "ACTIVE":
+                actions.append("activate")
+            item["actions"] = actions
+            if not actions:
+                item["reason"] = "already published" + (" and ACTIVE" if wants_active else "")
+                counts["unchanged"] += 1
+            else:
+                if "publish" in actions:
+                    counts["publish"] += 1
+                if "activate" in actions:
+                    counts["activate"] += 1
+            items.append(item)
+        return {
+            "store": self.store_domain,
+            "api_version": SHOPIFY_API_VERSION,
+            "publication": publication,
+            "activate_published": bool(activate_published),
+            "only_products": sorted(only_products) if only_products else None,
+            "counts": counts,
+            "items": items,
+        }
+
+    def _batch_mutate(self, field: str, arguments: str, alias_values: dict, alias_type: str,
+                      shared: dict | None = None, shared_types: dict | None = None) -> dict:
+        """Run several aliased copies of one mutation field in a single document.
+
+        ``arguments`` is a format string using ``{alias}`` for the per-object
+        variable name. Returns {alias: error message or None}. A whole-document
+        failure retries one alias per request, so a single bad id cannot fail
+        the whole batch.
+        """
+        shared = shared or {}
+        shared_types = shared_types or {}
+        aliases = sorted(alias_values)
+        decl = ", ".join([f"${a}: {alias_type}" for a in aliases]
+                         + [f"${k}: {shared_types[k]}" for k in sorted(shared)])
+        body = " ".join(
+            f"{a}: {field}({arguments.format(alias=a)}) {{ userErrors {{ field message }} }}"
+            for a in aliases
+        )
+        variables = dict(shared)
+        variables.update(alias_values)
+        try:
+            data = self.client.graphql(f"mutation({decl}) {{ {body} }}", variables)
+        except ShopifyAdminError as exc:
+            if len(aliases) == 1:
+                return {aliases[0]: str(exc)[:300]}
+            out = {}
+            for alias in aliases:
+                out.update(self._batch_mutate(field, arguments, {alias: alias_values[alias]},
+                                              alias_type, shared, shared_types))
+            return out
+        results = {}
+        for alias in aliases:
+            errors = ((data.get(alias) or {}).get("userErrors")) or []
+            results[alias] = "; ".join(
+                f"{'.'.join(map(str, e.get('field') or []))}: {e.get('message')}" for e in errors
+            )[:300] or None
+        return results
+
+    def apply_publish(self, plan: dict, batch_size: int = PUBLISH_BATCH) -> dict:
+        """Execute a plan from ``plan_publish``. Returns the plan with outcomes."""
+        publication_gid = plan["publication"]["id"]
+        by_id = {item["id"]: item for item in plan["items"]}
+        for item in plan["items"]:
+            item.setdefault("outcome", "unchanged" if not item["actions"] else "pending")
+            if item["actions"] == [] and item.get("reason", "").startswith("object in the ledger"):
+                item["outcome"] = "failed"
+
+        to_publish = [i for i in plan["items"] if "publish" in i["actions"]]
+        for chunk in _chunks(to_publish, batch_size):
+            errors = self._batch_mutate(
+                "publishablePublish", "id: ${alias}, input: [{{publicationId: $pub}}]",
+                {f"i{n}": item["id"] for n, item in enumerate(chunk)}, "ID!",
+                {"pub": publication_gid}, {"pub": "ID!"},
+            )
+            for n, item in enumerate(chunk):
+                message = errors.get(f"i{n}")
+                if message:
+                    item["outcome"] = "failed"
+                    item["error"] = message
+                else:
+                    item["outcome"] = "published"
+
+        to_activate = [i for i in plan["items"]
+                       if "activate" in i["actions"] and by_id[i["id"]].get("outcome") != "failed"]
+        for chunk in _chunks(to_activate, batch_size):
+            errors = self._batch_mutate(
+                "productUpdate", "product: ${alias}",
+                {f"i{n}": {"id": item["id"], "status": "ACTIVE"} for n, item in enumerate(chunk)},
+                "ProductUpdateInput!",
+            )
+            for n, item in enumerate(chunk):
+                message = errors.get(f"i{n}")
+                if message:
+                    item["outcome"] = "failed"
+                    item["error"] = message
+                else:
+                    item["outcome"] = "activated"
+                    item["live_status"] = "ACTIVE"
+
+        outcomes = {"published": 0, "activated": 0, "unchanged": 0, "failed": 0}
+        for item in plan["items"]:
+            outcomes[item.get("outcome", "unchanged")] = outcomes.get(item.get("outcome", "unchanged"), 0) + 1
+        plan["outcomes"] = outcomes
+        return plan
+
+    def publish(self, publication_name: str, activate_published: bool = False,
+                only_products=None, live: bool = False, batch_size: int = PUBLISH_BATCH) -> dict:
+        """Plan (always) then apply (only when ``live``). Idempotent either way."""
+        plan = self.plan_publish(publication_name, activate_published, only_products)
+        plan["dry_run"] = not live
+        plan["generated_at"] = utc_now()
+        if live:
+            self.apply_publish(plan, batch_size=batch_size)
+        else:
+            plan["outcomes"] = {
+                "published": plan["counts"]["publish"],
+                "activated": plan["counts"]["activate"],
+                "unchanged": plan["counts"]["unchanged"],
+                "failed": plan["counts"]["missing"],
+            }
+        write_json(self.store_dir / "publish-result.json", plan)
+        return plan
+
+    # ------------------------------------------------------------------ verify
+    VERIFY_QUERY = (
+        "query($ids:[ID!]!){ nodes(ids:$ids){ id __typename"
+        " ... on Product { handle title status variantsCount{ count } }"
+        " ... on Collection { handle title }"
+        " ... on Page { handle title }"
+        " ... on Article { handle title }"
+        " ... on ProductVariant { sku }"
+        " ... on MediaImage { status }"
+        " ... on MetafieldDefinition { namespace key }"
+        " } }"
+    )
+    # Customer, InventoryItem, Metafield and DiscountCodeNode are presence-only:
+    # nothing about them is fetched, so no personal data can enter a report.
+
+    def verify(self, checksums: bool = True, batch_size: int = NODE_BATCH) -> dict:
+        """Read-only ledger-vs-store comparison. Writes reports, never the store.
+
+        Reports: objects in the ledger that no longer exist on the store,
+        products whose live variant count differs from the ledger's, media that
+        Shopify left in a non-READY state, and (with ``checksums``) products
+        whose handle/title/status drifted away from the loaded payload.
+        """
+        objects = self.state["objects"]
+        # CollectionMembership entries reuse their collection's gid, so one gid
+        # can stand for more than one ledger row: index by gid -> [rows].
+        index: dict[str, list[dict]] = {}
+        ledger_rows = 0
+        for resource, entries in sorted(objects.items()):
+            for key, entry in sorted(entries.items()):
+                ledger_rows += 1
+                index.setdefault(entry["id"], []).append(
+                    {"resource": resource, "key": key, "payload": entry.get("payload") or {}}
+                )
+        gids = sorted(index)
+        live: dict[str, dict] = {}
+        missing = []
+        for chunk in _chunks(gids, batch_size):
+            data = self.client.graphql(self.VERIFY_QUERY, {"ids": chunk})
+            for gid, node in zip(chunk, data.get("nodes") or []):
+                if node is None:
+                    missing.extend({"resource": row["resource"], "key": row["key"], "id": gid}
+                                   for row in index[gid])
+                else:
+                    live[node["id"]] = node
+
+        ledger_variants: dict[str, int] = {}
+        for entry in objects.get("ProductVariant", {}).values():
+            handle = (entry.get("payload") or {}).get("product_handle")
+            if handle:
+                ledger_variants[handle] = ledger_variants.get(handle, 0) + 1
+
+        variant_mismatches, drift, media_not_ready = [], [], []
+        for gid, node in sorted(live.items()):
+            meta = next((row for row in index[gid] if row["resource"] == node.get("__typename")),
+                        index[gid][0])
+            payload = meta["payload"]
+            if node.get("__typename") == "Product":
+                expected = ledger_variants.get(meta["key"], 0)
+                actual = (node.get("variantsCount") or {}).get("count")
+                if expected and actual is not None and actual != expected:
+                    variant_mismatches.append({"handle": meta["key"], "id": gid,
+                                               "ledger_variants": expected, "live_variants": actual})
+                if checksums:
+                    fields = {}
+                    for field, ledger_value in (("handle", payload.get("handle")),
+                                                ("title", payload.get("title")),
+                                                ("status", payload.get("status"))):
+                        live_value = node.get(field)
+                        if ledger_value is not None and live_value != ledger_value:
+                            fields[field] = {"ledger": ledger_value, "live": live_value}
+                    if fields:
+                        note = None
+                        if set(fields) == {"status"} and fields["status"]["live"] == "ACTIVE":
+                            note = "status raised to ACTIVE outside the load (publish stage or QA helper)"
+                        drift.append({"handle": meta["key"], "id": gid, "fields": fields, "note": note})
+            elif node.get("__typename") == "MediaImage" and node.get("status") not in (None, "READY"):
+                media_not_ready.append({"key": meta["key"], "id": gid, "status": node.get("status")})
+
+        report = {
+            "generated_at": utc_now(),
+            "store": self.store_domain,
+            "api_version": SHOPIFY_API_VERSION,
+            "store_dir": str(self.store_dir),
+            "ledger_rows": ledger_rows,
+            "checked": len(gids),
+            "ledger_counts": self.counts(),
+            "live_found": len(live),
+            "summary": {
+                "missing": len(missing),
+                "variant_count_mismatch": len(variant_mismatches),
+                "field_drift": len(drift),
+                "media_not_ready": len(media_not_ready),
+                "api_calls": self.client.calls,
+            },
+            "missing": missing,
+            "variant_count_mismatch": variant_mismatches,
+            "field_drift": drift,
+            "media_not_ready": media_not_ready,
+        }
+        write_json(self.store_dir / "verify-result.json", report)
+        (self.store_dir / "verify-report.md").write_text(_verify_markdown(report), encoding="utf-8")
+        return report
+
     # ------------------------------------------------------------------- purge
     def purge(self, dry_run: bool = True) -> dict:
         """Delete every object this ledger created on the store (staging resets only)."""
@@ -920,21 +1281,92 @@ class ShopifyAdminTarget(FakeShopifyTarget):
         return summary
 
 
+def _verify_markdown(report: dict) -> str:
+    """Short, PII-free markdown summary of a verify run."""
+    summary = report["summary"]
+    lines = [
+        "# Live store verification",
+        "",
+        "Read-only comparison of the load ledger with the Shopify store. Written by",
+        "`python3 scripts/migration/shopify_target.py verify --store <ledger>`.",
+        "This file lives beside the ledger under `exports/` and is never committed.",
+        "",
+        "| Field | Value |",
+        "|---|---|",
+        f"| Generated | {report['generated_at']} |",
+        f"| Store | `{report['store']}` |",
+        f"| Admin API version | `{report['api_version']}` |",
+        f"| Ledger rows | {report['ledger_rows']} |",
+        f"| Distinct ids checked | {report['checked']} |",
+        f"| Found on the store | {report['live_found']} |",
+        f"| Admin API calls | {summary['api_calls']} |",
+        "",
+        "| Check | Count |",
+        "|---|---:|",
+        f"| Missing on the store | **{summary['missing']}** |",
+        f"| Products with a different variant count | **{summary['variant_count_mismatch']}** |",
+        f"| Products with handle/title/status drift | {summary['field_drift']} |",
+        f"| Media not in READY state | {summary['media_not_ready']} |",
+        "",
+        "## Ledger objects by resource",
+        "",
+        "| Resource | Count |",
+        "|---|---:|",
+    ]
+    for resource, count in sorted(report["ledger_counts"].items()):
+        lines.append(f"| {resource} | {count} |")
+    if report["missing"]:
+        lines += ["", "## Missing on the store", "", "| Resource | Key |", "|---|---|"]
+        lines += [f"| {row['resource']} | `{row['key']}` |" for row in report["missing"]]
+    if report["variant_count_mismatch"]:
+        lines += ["", "## Variant count mismatches", "",
+                  "| Product | Ledger | Live |", "|---|---:|---:|"]
+        lines += [f"| `{row['handle']}` | {row['ledger_variants']} | {row['live_variants']} |"
+                  for row in report["variant_count_mismatch"]]
+    if report["field_drift"]:
+        lines += ["", "## Field drift", "", "| Product | Field | Ledger | Live | Note |",
+                  "|---|---|---|---|---|"]
+        for row in report["field_drift"]:
+            for field, values in sorted(row["fields"].items()):
+                lines.append(f"| `{row['handle']}` | {field} | {values['ledger']} | "
+                             f"{values['live']} | {row.get('note') or ''} |")
+    if report["media_not_ready"]:
+        lines += ["", "## Media not READY", "", "| Key | Status |", "|---|---|"]
+        lines += [f"| `{row['key']}` | {row['status']} |" for row in report["media_not_ready"]]
+    lines.append("")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
-# CLI: staging resets
+# CLI: staging resets and read-only verification
 # ---------------------------------------------------------------------------
 
 def main(argv):
     import argparse
     parser = argparse.ArgumentParser(description="Live Shopify target maintenance")
-    parser.add_argument("command", choices=["purge", "status"])
+    parser.add_argument("command", choices=["purge", "status", "verify"])
     parser.add_argument("--store", required=True, help="ledger directory used by the live load")
     parser.add_argument("--yes", action="store_true", help="actually delete (purge defaults to a dry run)")
+    parser.add_argument("--no-checksums", action="store_true",
+                        help="verify: skip the handle/title/status drift comparison")
+    parser.add_argument("--batch", type=int, default=NODE_BATCH,
+                        help=f"verify: ids per nodes() query (default {NODE_BATCH})")
     args = parser.parse_args(argv[1:])
     target = ShopifyAdminTarget(Path(args.store))
     if args.command == "status":
         print(json.dumps({"store": target.store_domain, "objects": target.counts()}, indent=2))
         return 0
+    if args.command == "verify":
+        report = target.verify(checksums=not args.no_checksums, batch_size=args.batch)
+        print(json.dumps({k: v for k, v in report.items()
+                          if k not in ("missing", "variant_count_mismatch", "field_drift",
+                                       "media_not_ready")}, indent=2))
+        for name in ("missing", "variant_count_mismatch", "field_drift", "media_not_ready"):
+            if report[name]:
+                print(f"{name}: {json.dumps(report[name], indent=2)}")
+        print(f"reports: {target.store_dir / 'verify-result.json'}, "
+              f"{target.store_dir / 'verify-report.md'}")
+        return 1 if (report["summary"]["missing"] or report["summary"]["variant_count_mismatch"]) else 0
     summary = target.purge(dry_run=not args.yes)
     print(json.dumps(summary, indent=2))
     return 1 if summary.get("errors") else 0

@@ -6,7 +6,7 @@
     python3 scripts/migration/run.py all --source scripts/migration/fixtures --target fake
     python3 scripts/migration/run.py prove          # idempotency + controlled delta
 
-Stages: extract, transform, load, reconcile, all, prove.
+Stages: extract, transform, load, reconcile, all, prove, publish.
 Every stage is restartable: each writes its output to
 exports/migration/<run-id>/ and later stages read it back from there.
 
@@ -19,6 +19,20 @@ loads into the client store through the Admin API and must be paired with
     python3 scripts/migration/run.py all --target shopify --live \
         --store exports/migration/live-store --skip-types customers,discounts \
         --only-products ace-unisex,nago --no-docs
+
+The load never publishes: products are created DRAFT and joined to no sales
+channel. Making the catalog visible is the separate `publish` stage, run after
+QA. It reads the live publication state first and only writes with `--live`:
+
+    # dry run (default): print the plan, touch nothing
+    python3 scripts/migration/run.py publish --store exports/migration/live-store \
+        --publication "ProSporter Dev"
+    # apply it, and set ACTIVE the products whose WooCommerce status was 'publish'
+    python3 scripts/migration/run.py publish --store exports/migration/live-store \
+        --publication "ProSporter Dev" --live --activate-published
+
+Read-only verification of a ledger against the store lives in
+`shopify_target.py verify --store <ledger>`.
 """
 from __future__ import annotations
 
@@ -52,7 +66,7 @@ from common import (  # noqa: E402
 )
 from errors import ExceptionCollector  # noqa: E402
 
-STAGES = ("extract", "transform", "load", "reconcile", "all", "prove")
+STAGES = ("extract", "transform", "load", "reconcile", "all", "prove", "publish")
 
 
 def default_run_id() -> str:
@@ -80,6 +94,12 @@ def parse_args(argv=None):
                         help="comma-separated record types to leave out (e.g. customers,discounts)")
     parser.add_argument("--only-products", default="",
                         help="comma-separated product handles; restricts products and their variants/media/metafields")
+    parser.add_argument("--publication", default="ProSporter Dev",
+                        help="publish stage: sales channel / publication name")
+    parser.add_argument("--activate-published", action="store_true",
+                        help="publish stage: also set ACTIVE the products whose source status was 'publish'")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="publish stage: print the plan and write nothing, even with --live")
     return parser.parse_args(argv)
 
 
@@ -162,6 +182,63 @@ def stage_reconcile(data, records, target, exc, args, run_dir, run_id):
           f"{summary['mismatch']} mismatch of {summary['checks_total']} checks; "
           f"exceptions {summary['exceptions_by_severity']}")
     return report
+
+
+def stage_publish(args, run_dir, run_id):
+    """Step 10: expose the loaded catalog to a sales channel.
+
+    Separate from the load on purpose - the loader never publishes anything, so
+    a catalog can be loaded, QA'd and only then made visible. Idempotent: the
+    live publication state and product status are read first and anything
+    already correct is reported ``unchanged``.
+    """
+    if not args.store:
+        raise SystemExit("publish needs the live load's --store ledger directory")
+    store_dir = Path(args.store)
+    if store_dir.resolve() == DEFAULT_STORE.resolve():
+        raise SystemExit("publish operates on a live ledger, not the fake store")
+    if not (store_dir / "store.json").exists():
+        raise SystemExit(f"no ledger at {store_dir}/store.json; run the load first")
+    live = bool(args.live) and not args.dry_run
+    only_products = [h for h in args.only_products.split(",") if h] or None
+
+    from shopify_target import ShopifyAdminTarget  # lazy: keeps dry runs off the network
+
+    target = ShopifyAdminTarget(store_dir)
+    result = target.publish(
+        args.publication,
+        activate_published=bool(args.activate_published),
+        only_products=only_products,
+        live=live,
+    )
+    counts, outcomes = result["counts"], result["outcomes"]
+    mode = "LIVE" if live else "dry run"
+    print(f"[publish] {mode}: publication {result['publication']['name']} on {result['store']}")
+    print(f"[publish] plan: {counts['total']} objects, publish={counts['publish']} "
+          f"activate={counts['activate']} unchanged={counts['unchanged']} missing={counts['missing']}")
+    if not live:
+        for item in result["items"]:
+            if item["actions"]:
+                print(f"[publish]   {item['resource']:<10} {item['key']:<45} "
+                      f"{'+'.join(item['actions'])}")
+    print(f"[publish] outcomes: published={outcomes['published']} activated={outcomes['activated']} "
+          f"unchanged={outcomes['unchanged']} failed={outcomes['failed']} "
+          f"-> {store_dir / 'publish-result.json'}")
+    write_json(run_dir / "run-manifest.json", run_manifest(
+        run_id, args.source, "n/a (publish stage)", "shopify", ["publish"],
+        {
+            "store_dir": rel(store_dir),
+            "publish": {
+                "publication": result["publication"],
+                "dry_run": result["dry_run"],
+                "activate_published": result["activate_published"],
+                "only_products": result["only_products"],
+                "counts": counts,
+                "outcomes": outcomes,
+            },
+        },
+    ))
+    return result
 
 
 def write_exceptions(run_dir, exc):
@@ -355,6 +432,10 @@ def main(argv=None):
     run_id = args.run_id or default_run_id()
     run_dir = MIGRATION_OUT / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.stage == "publish":
+        result = stage_publish(args, run_dir, run_id)
+        return 1 if result["outcomes"]["failed"] else 0
 
     if args.stage == "all":
         result = run_all(args, run_id, run_dir)

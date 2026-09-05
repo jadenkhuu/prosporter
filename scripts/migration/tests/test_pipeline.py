@@ -291,5 +291,262 @@ class EndToEnd(unittest.TestCase):
             self.assertEqual(variant_products, set(keep))
 
 
+PUBLICATION_GID = "gid://shopify/Publication/327884112237"
+
+
+def json_load(path):
+    import json
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+class PublishStubClient:
+    """Minimal stand-in for shopify_admin.AdminClient for the publish stage.
+
+    Answers the publication lookup and the batched ``nodes(ids:)`` state query
+    from a dict, and records the aliased mutations the target sends.
+    """
+
+    def __init__(self, nodes: dict, domain: str = "stub.myshopify.com"):
+        self.domain = domain
+        self.nodes = nodes  # gid -> node dict, or None for "gone from the store"
+        self.calls = 0
+        self.published: list[str] = []
+        self.activated: list[str] = []
+        self.documents: list[str] = []
+
+    def graphql(self, query, variables=None):
+        self.calls += 1
+        self.documents.append(query)
+        variables = variables or {}
+        if query.lstrip().startswith("mutation"):
+            result = {}
+            for alias, value in variables.items():
+                if alias == "pub":
+                    continue
+                if "publishablePublish" in query:
+                    self.published.append(value)
+                else:
+                    self.activated.append(value["id"])
+                    node = self.nodes.get(value["id"])
+                    if node:
+                        node["status"] = "ACTIVE"
+                result[alias] = {"userErrors": []}
+            return result
+        if "publications(first:" in query:
+            return {"publications": {"nodes": [
+                {"id": "gid://shopify/Publication/1", "name": "Online Store"},
+                {"id": PUBLICATION_GID, "name": "ProSporter Dev"},
+            ]}}
+        if "nodes(ids:" in query:
+            return {"nodes": [self.nodes.get(gid) for gid in variables["ids"]]}
+        raise AssertionError(f"unexpected query: {query[:80]}")
+
+    def mutate(self, query, variables, result_key):  # pragma: no cover - unused here
+        raise AssertionError("the publish stage batches through graphql()")
+
+
+def _publishable(gid, typename, handle, status=None, publications=()):
+    node = {"id": gid, "__typename": typename, "handle": handle,
+            "resourcePublicationsV2": {"nodes": [
+                {"isPublished": True, "publication": {"id": p}} for p in publications
+            ]}}
+    if status:
+        node["status"] = status
+    return node
+
+
+class PublishPlanning(unittest.TestCase):
+    """The publish stage plans from live state and never activates source drafts."""
+
+    # handle -> (gid, source status, live status or None if gone, already published?)
+    PRODUCTS = {
+        "live-active": ("gid://shopify/Product/1", "publish", "ACTIVE", True),
+        "needs-both": ("gid://shopify/Product/2", "publish", "DRAFT", False),
+        "source-draft": ("gid://shopify/Product/3", "draft", "DRAFT", False),
+        "gone": ("gid://shopify/Product/4", "publish", None, False),
+    }
+    COLLECTION_GID = "gid://shopify/Collection/9"
+
+    def _target(self, tmp):
+        import shopify_target
+        nodes = {}
+        for handle, (gid, _src, live_status, published) in self.PRODUCTS.items():
+            nodes[gid] = None if live_status is None else _publishable(
+                gid, "Product", handle, live_status, (PUBLICATION_GID,) if published else ()
+            )
+        nodes[self.COLLECTION_GID] = _publishable(self.COLLECTION_GID, "Collection", "tops")
+        client = PublishStubClient(nodes)
+        target = shopify_target.ShopifyAdminTarget(Path(tmp) / "ledger", client=client)
+        objects = target.state["objects"]
+        objects["Product"] = {
+            handle: {"id": gid, "checksum": "x",
+                     "payload": {"handle": handle, "title": handle.title(),
+                                 "status": "DRAFT", "source_status": src}}
+            for handle, (gid, src, _live, _pub) in self.PRODUCTS.items()
+        }
+        objects["Collection"] = {
+            "tops": {"id": self.COLLECTION_GID, "checksum": "x",
+                     "payload": {"handle": "tops", "title": "Tops"}}
+        }
+        return target, client
+
+    def test_plan_skips_what_is_already_right_and_never_activates_source_drafts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target, _client = self._target(tmp)
+            plan = target.plan_publish("ProSporter Dev", activate_published=True)
+            actions = {i["key"]: i["actions"] for i in plan["items"]}
+            self.assertEqual(actions["live-active"], [])            # published and ACTIVE already
+            self.assertEqual(actions["needs-both"], ["publish", "activate"])
+            self.assertEqual(actions["source-draft"], ["publish"])  # stays DRAFT
+            self.assertEqual(actions["tops"], ["publish"])          # collections never activate
+            self.assertEqual(actions["gone"], [])                   # missing on the store
+            self.assertEqual(plan["counts"],
+                             {"total": 5, "publish": 3, "activate": 1, "unchanged": 1, "missing": 1})
+            self.assertEqual(plan["publication"]["id"], PUBLICATION_GID)
+
+    def test_without_activate_no_product_status_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target, _client = self._target(tmp)
+            plan = target.plan_publish("ProSporter Dev", activate_published=False)
+            self.assertEqual(plan["counts"]["activate"], 0)
+            self.assertFalse([i for i in plan["items"] if "activate" in i["actions"]])
+
+    def test_only_products_narrows_the_plan_and_drops_collections(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target, _client = self._target(tmp)
+            plan = target.plan_publish("ProSporter Dev", only_products=["needs-both"])
+            self.assertEqual([i["key"] for i in plan["items"]], ["needs-both"])
+
+    def test_apply_publishes_and_activates_then_a_rerun_is_a_no_op(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target, client = self._target(tmp)
+            result = target.publish("ProSporter Dev", activate_published=True, live=True)
+            self.assertEqual(sorted(client.published),
+                             sorted([self.COLLECTION_GID, "gid://shopify/Product/2",
+                                     "gid://shopify/Product/3"]))
+            self.assertEqual(client.activated, ["gid://shopify/Product/2"])
+            self.assertEqual(result["outcomes"],
+                             {"published": 2, "activated": 1, "unchanged": 1, "failed": 1})
+            self.assertFalse(result["dry_run"])
+            self.assertTrue((Path(tmp) / "ledger" / "publish-result.json").exists())
+
+            # The store now reflects those writes; a rerun must plan nothing.
+            for gid in client.published:
+                client.nodes[gid]["resourcePublicationsV2"]["nodes"].append(
+                    {"isPublished": True, "publication": {"id": PUBLICATION_GID}})
+            rerun = target.plan_publish("ProSporter Dev", activate_published=True)
+            self.assertEqual(rerun["counts"]["publish"], 0)
+            self.assertEqual(rerun["counts"]["activate"], 0)
+            self.assertEqual(rerun["counts"]["unchanged"], 4)
+
+    def test_dry_run_sends_no_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target, client = self._target(tmp)
+            result = target.publish("ProSporter Dev", activate_published=True, live=False)
+            self.assertTrue(result["dry_run"])
+            self.assertEqual(client.published, [])
+            self.assertEqual(client.activated, [])
+            self.assertFalse([d for d in client.documents if d.lstrip().startswith("mutation")])
+
+    def test_run_py_publish_defaults_to_a_dry_run(self):
+        args = run_mod.parse_args(["publish", "--store", "exports/migration/live-store"])
+        self.assertEqual(args.stage, "publish")
+        self.assertFalse(args.live)
+        self.assertFalse(args.activate_published)
+        self.assertEqual(args.publication, "ProSporter Dev")
+
+
+class CollectionStubClient:
+    """Stub client for the collection upsert path; fails once per named handle."""
+
+    def __init__(self, fail_handles=(), domain="stub.myshopify.com"):
+        self.domain = domain
+        self.calls = 0
+        self.fail_handles = set(fail_handles)
+        self.created: list[str] = []
+        self.counter = 0
+
+    def graphql(self, query, variables=None):
+        self.calls += 1
+        if "collectionByIdentifier" in query:
+            return {"collectionByIdentifier": None}
+        raise AssertionError(f"unexpected query: {query[:80]}")
+
+    def mutate(self, query, variables, result_key):
+        import shopify_admin
+        self.calls += 1
+        handle = variables["c"]["handle"]
+        if handle in self.fail_handles:
+            self.fail_handles.discard(handle)
+            raise shopify_admin.ShopifyAdminError(
+                f"collectionCreate userErrors: handle: simulated Admin API failure for {handle}"
+            )
+        self.counter += 1
+        self.created.append(handle)
+        return {"collection": {"id": f"gid://shopify/Collection/{self.counter:03d}"}}
+
+
+class FailureRecovery(unittest.TestCase):
+    """A per-record Admin failure keeps the record out of the ledger, so the next
+    run creates exactly that record and nothing else. See
+    docs/migration/error-recovery.md."""
+
+    HANDLES = ["collection-a", "collection-b", "collection-c"]
+    SKIP = ["metafield_definitions", "products", "variants", "media",
+            "variants_inventory", "collection_membership", "metafields",
+            "pages", "articles", "customers", "discounts"]
+
+    def _records(self):
+        return {"collections": [
+            {"handle": handle, "title": handle.replace("-", " ").title(),
+             "body_html": "", "seo": {"title": None, "description": None},
+             "product_handles": [],
+             "source": {"woo_id": None, "woo_type": "collection", "source_snapshot": "t"}}
+            for handle in self.HANDLES
+        ]}
+
+    def _load(self, store_dir, client):
+        import loader
+        import shopify_target
+        target = shopify_target.ShopifyAdminTarget(store_dir, client=client)
+        exc = ExceptionCollector()
+        result = loader.load(self._records(), target, exc, skip_types=self.SKIP)
+        return target, result, exc
+
+    def test_failed_record_is_retried_on_the_next_run_and_nothing_else_moves(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store_dir = Path(tmp) / "ledger"
+
+            first_client = CollectionStubClient(fail_handles=["collection-b"])
+            first, run1, exc1 = self._load(store_dir, first_client)
+            self.assertEqual(run1["stats"]["created"], 2)
+            self.assertEqual(run1["stats"]["failed"], 1)
+            self.assertEqual(first_client.created, ["collection-a", "collection-c"])
+            # The failed record never entered the ledger.
+            self.assertEqual(sorted(first.state["objects"]["Collection"]),
+                             ["collection-a", "collection-c"])
+            failed = [r for r in exc1.rows if r["code"] == "load_failed"]
+            self.assertEqual([r["record"]["ref"] for r in failed], ["collection-b"])
+            self.assertEqual(json_load(store_dir / "failures.json")["count"], 1)
+            # The ledger is flushed during the run, not only at the end.
+            self.assertEqual(sorted(json_load(store_dir / "store.json")["objects"]["Collection"]),
+                             ["collection-a", "collection-c"])
+
+            second_client = CollectionStubClient()
+            second, run2, exc2 = self._load(store_dir, second_client)
+            self.assertEqual(second_client.created, ["collection-b"])  # exactly the failed one
+            self.assertEqual(run2["stats"]["created"], 1)
+            self.assertEqual(run2["stats"]["unchanged"], 2)
+            self.assertEqual(run2["stats"]["updated"], 0)
+            self.assertEqual(run2["stats"]["failed"], 0)
+            self.assertEqual(sorted(second.state["objects"]["Collection"]), sorted(self.HANDLES))
+            self.assertFalse([r for r in exc2.rows if r["code"] == "load_failed"])
+            self.assertEqual(json_load(store_dir / "failures.json")["count"], 0)
+            # The two already-loaded collections kept their destination ids.
+            for handle in ("collection-a", "collection-c"):
+                self.assertEqual(second.state["objects"]["Collection"][handle]["id"],
+                                 first.state["objects"]["Collection"][handle]["id"])
+
+
 if __name__ == "__main__":
     unittest.main()

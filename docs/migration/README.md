@@ -2,8 +2,13 @@
 
 Repeatable, deterministic WooCommerce → Shopify migration pipeline plus its dry-run
 evidence. The default load target is a file-backed fake Admin API, so `run.py` makes no
-network calls. The client store (`prosporter.myshopify.com`) now exists and the pipeline's
-Admin access is in `shopify_admin.py`; the real loader is the next step (see below).
+network calls. The client store (`prosporter.myshopify.com`) exists, Admin access is in
+`shopify_admin.py`, and the live loader (`shopify_target.py`) is verified against it.
+
+Companion documents: **[error-recovery.md](error-recovery.md)** (every failure class the
+loader can hit and exactly how a rerun recovers) and
+**[cutover-runbook.md](cutover-runbook.md)** (ordered rehearsal and cutover steps,
+rollback, and the API-call-derived time estimates).
 
 Everything in `docs/migration/` is derived and PII-free. Every artefact that contains
 real customer or catalog data is written under `exports/` (git-ignored) and never leaves it.
@@ -18,6 +23,7 @@ real customer or catalog data is written under `exports/` (git-ignored) and neve
 | `reconcile` | Field-level source-vs-target comparison for every item in the plan's dry-run reconciliation list. | `reconciliation.json`, `docs/migration/reconciliation-latest.md`, `docs/migration/exception-register.csv` |
 | `all` | extract → transform → load → reconcile in one process. | all of the above plus `run-manifest.json` |
 | `prove` | Runs `all` twice on identical inputs, then once on a controlled delta, and diffs the fake store each time. | `docs/migration/idempotency-proof.md`, `exports/migration/proof.json` |
+| `publish` | Live only, after QA. Publishes every ledger Product and Collection to a named publication and, with `--activate-published`, sets ACTIVE the products whose source status was `publish`. Dry run by default. | `<store>/publish-result.json`, `run-manifest.json` |
 
 ## CLI
 
@@ -41,14 +47,23 @@ python3 scripts/migration/run.py reconcile --run-id 2026-09-05a
 # idempotency + delta proof (writes docs/migration/idempotency-proof.md)
 python3 scripts/migration/run.py prove
 
+# publish stage (live only; dry run by default, see "Publish stage" below)
+python3 scripts/migration/run.py publish --store exports/migration/live-store \
+    --publication "ProSporter Dev"
+
+# read-only ledger-vs-store verification
+python3 scripts/migration/shopify_target.py verify --store exports/migration/live-store
+
 # tests
 python3 -m unittest discover -s scripts/migration/tests
 ```
 
 Flags: `--source` (export directory, default `exports/`), `--target` (`fake` default,
-`shopify-admin` raises `NotImplementedError`), `--store` (fake-store directory),
-`--reset-store` (load from scratch), `--no-docs` (skip the committed reports),
-`--fail-on-critical` (exit 2 when unresolved critical exceptions remain — the quality gate).
+`shopify` for the live Admin API), `--store` (store/ledger directory),
+`--reset-store` (load from scratch; fake target only), `--no-docs` (skip the committed reports),
+`--fail-on-critical` (exit 2 when unresolved critical exceptions remain — the quality gate),
+`--live` (required by `--target shopify` and by the publish stage), `--skip-types`,
+`--only-products`. Publish-stage only: `--publication`, `--activate-published`, `--dry-run`.
 
 Python 3.11+, standard library only. Deterministic: the same inputs produce byte-identical
 JSONL, so two runs can be diffed.
@@ -140,8 +155,9 @@ class Target:
 object and must report `unchanged`. `loader.LOAD_ORDER` encodes the plan's load order
 (definitions and empty collections → products/options → variants → media → inventory →
 collection membership, tags and metafields → pages → articles → customers → discounts).
-Redirects (step 9) belong to the redirects workstream; final publication to the Headless
-channel (step 10) happens after QA and is out of scope for a dry run.
+Redirects (step 9) belong to the redirects workstream. Final publication to a sales
+channel (step 10) is never part of a load: it is the separate `run.py publish` stage,
+run after QA (see "Publish stage" below).
 
 ### What is stubbed and why
 
@@ -232,6 +248,67 @@ refuses to run against a different store.
 | Discounts | `customerSelection` replaced by `context: {all: ALL}` | as documented; category-restricted, excluded-product and free-shipping-plus-value coupons are failed with a decision message |
 | Product media | `productUpdate(media:[...])`; variant images via `productVariantsBulkUpdate(mediaId)` once media is `READY` | one image per call, id found by diffing the product's media list; variant images attached in `finish()` after polling (90 s cap) |
 | Page/article SEO | no `seo` on page/article inputs | `global.title_tag` / `global.description_tag` metafields |
+
+### Publish stage (`run.py publish`)
+
+Execution-plan step 10, and the only stage that makes the catalog visible. It is a
+separate command on purpose: the load leaves everything DRAFT and unpublished, so a
+catalog can be loaded and QA'd before a single shopper can see it.
+
+```bash
+# dry run (the default): print the plan, write nothing
+python3 scripts/migration/run.py publish --store exports/migration/live-store \
+    --publication "ProSporter Dev"
+
+# apply it
+python3 scripts/migration/run.py publish --store exports/migration/live-store \
+    --publication "ProSporter Dev" --live
+
+# apply it and set ACTIVE the products whose WooCommerce status was 'publish'
+python3 scripts/migration/run.py publish --store exports/migration/live-store \
+    --publication "ProSporter Dev" --live --activate-published
+
+# a QA-sized slice (restricts products by handle and drops collections)
+python3 scripts/migration/run.py publish --store exports/migration/live-store \
+    --publication "ProSporter Dev" --live --only-products nago,ace-unisex
+```
+
+* Every Product and Collection in the ledger is published to the named publication with
+  `publishablePublish`. The 2026-07 schema takes **one** publishable id per call (there
+  is no list form and `PublicationInput` carries only `publicationId` / `publishDate`),
+  so the stage batches several aliased `publishablePublish` fields into one document,
+  10 per request, falling back to one request per object if a batch is rejected.
+* `--activate-published` sets `status: ACTIVE` **only** where the record's
+  `source_status` is `publish`. Products that were drafts in WooCommerce stay DRAFT.
+* Idempotent: the live `resourcePublicationsV2` state and product status are read first
+  (batched `nodes(ids:)`, 50 per request) and anything already correct is reported
+  `unchanged` with no mutation. A ledger object that no longer exists on the store is
+  reported `failed`, not recreated.
+* Outcomes (`published` / `activated` / `unchanged` / `failed`) go to
+  `<store>/publish-result.json` and into the run manifest under `publish`.
+* `--live` is required to write; `--dry-run` forces a plan even when `--live` is passed.
+  The stage refuses to run against the fake store or a ledger with no `store.json`.
+
+### Verify (`shopify_target.py verify`)
+
+Read-only comparison of a ledger with the live store. It never writes to Shopify.
+
+```bash
+python3 scripts/migration/shopify_target.py verify --store exports/migration/live-store
+python3 scripts/migration/shopify_target.py verify --store exports/migration/live-store \
+    --no-checksums --batch 25
+```
+
+Every ledger object is fetched by gid in batches with `nodes(ids:)` (50 per request) and
+the report names: objects **missing** from the store, **products whose live variant
+count differs** from the ledger's, media Shopify left in a non-`READY` state, and (unless
+`--no-checksums`) products whose handle/title/status has **drifted** from the loaded
+payload. A DRAFT→ACTIVE status difference is annotated rather than treated as damage —
+that is what the publish stage and the QA helper do. Reports: `<store>/verify-result.json`
+and `<store>/verify-report.md` (both under `exports/`, git-ignored). Exit code 1 when
+anything is missing or a variant count differs. Only ids, handles, titles, statuses and
+counts are fetched: Customer, Metafield, InventoryItem and DiscountCodeNode objects are
+presence-checked and nothing about them is read, so no personal data can reach a report.
 
 Smoke test result (run `live-smoke-4`): 70 objects (6 definitions, 10 collections, 2
 products, 13 variants, 12 media, 13 inventory items, 10 memberships, 4 metafields), 0
