@@ -23,8 +23,7 @@ export function ProductCard({
   // with options sends the shopper to the PDP to choose.
   const canQuickAdd = product.inStock && (product.variantId !== null || !hasSizes);
 
-  const quickAdd = (e: React.MouseEvent) => {
-    e.preventDefault();
+  const quickAdd = () => {
     if (product.variantId) {
       addVariant(product.variantId);
       return;
@@ -39,12 +38,15 @@ export function ProductCard({
     });
   };
 
+  // One tab stop per card: the title link stretches over the whole card with a
+  // pseudo-element, so the image is not a second link and the quick-add button
+  // (raised above the overlay) stays independently reachable.
   return (
-    <Link href={`/product/${product.handle}`} className="group block">
+    <div className="group relative">
       <div className="relative aspect-[4/5] overflow-hidden rounded-card bg-surface">
         <Image
           src={product.image?.url ?? PLACEHOLDER_IMAGE}
-          alt={product.image?.alt ?? product.title}
+          alt=""
           fill
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
           priority={priority}
@@ -76,11 +78,12 @@ export function ProductCard({
         {/* Quick add — appears on hover (desktop), always tappable on touch */}
         {canQuickAdd && (
           <button
+            type="button"
             onClick={quickAdd}
-            aria-label={`Quick add ${product.title}`}
-            className="absolute bottom-3 right-3 flex h-10 items-center gap-1.5 rounded-full bg-paper pl-3 pr-3 text-sm font-semibold text-ink shadow-md transition-all duration-200 hover:bg-ink hover:text-paper focus-visible:opacity-100 sm:translate-y-2 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100"
+            aria-label={`Quick add ${product.title} to bag`}
+            className="absolute bottom-3 right-3 z-10 flex h-10 items-center gap-1.5 rounded-full bg-paper pl-3 pr-3 text-sm font-semibold text-ink shadow-md transition-all duration-200 hover:bg-ink hover:text-paper focus-visible:translate-y-0 focus-visible:opacity-100 sm:translate-y-2 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100"
           >
-            <PlusIcon width={16} height={16} />
+            <PlusIcon width={16} height={16} aria-hidden="true" />
             <span className="hidden sm:inline">Add</span>
           </button>
         )}
@@ -88,7 +91,16 @@ export function ProductCard({
 
       <div className="mt-3">
         <p className="eyebrow text-subtle">{product.categoryLabel}</p>
-        <h3 className="mt-1 line-clamp-1 text-sm font-medium text-ink">{product.title}</h3>
+        <h3 className="mt-1 text-sm font-medium text-ink">
+          {/* The clamp lives on an inner span: an `overflow:hidden` ancestor
+              would clip the stretched ::after overlay. */}
+          <Link
+            href={`/product/${product.handle}`}
+            className="after:absolute after:inset-0 after:rounded-card after:content-[''] focus-visible:outline-none focus-visible:after:outline focus-visible:after:outline-2 focus-visible:after:outline-offset-2 focus-visible:after:outline-green-deep"
+          >
+            <span className="line-clamp-1">{product.title}</span>
+          </Link>
+        </h3>
         <div className="mt-1.5 flex items-center justify-between">
           <p className="text-sm font-semibold tabular-nums">
             {formatPriceRange(product.price, product.maxPrice, product.currency)}
@@ -99,17 +111,25 @@ export function ProductCard({
                 <span
                   key={c}
                   title={c}
+                  aria-hidden="true"
                   className="h-3 w-3 rounded-full ring-1 ring-line ring-inset"
                   style={{ background: swatchFor(c) }}
                 />
               ))}
               {product.colours.length > 4 && (
-                <span className="text-[10px] text-subtle">+{product.colours.length - 4}</span>
+                <span aria-hidden="true" className="text-[10px] text-subtle">
+                  +{product.colours.length - 4}
+                </span>
               )}
+              <span className="sr-only">
+                {product.colours.length === 1
+                  ? "1 colour available"
+                  : `${product.colours.length} colours available`}
+              </span>
             </div>
           )}
         </div>
       </div>
-    </Link>
+    </div>
   );
 }

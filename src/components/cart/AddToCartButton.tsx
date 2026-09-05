@@ -39,10 +39,11 @@ export function AddToCartButton({
       type="button"
       disabled={disabled}
       aria-disabled={disabled}
+      aria-busy={isPending}
       onClick={() => addVariant(variantId, quantity)}
       className={
         className ??
-        "w-full rounded-full bg-ink px-6 py-4 text-sm font-semibold text-paper transition-colors hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
+        "w-full rounded-full bg-ink px-6 py-4 text-sm font-semibold text-paper transition-colors hover:bg-ink-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:cursor-not-allowed disabled:opacity-50"
       }
     >
       {label}
