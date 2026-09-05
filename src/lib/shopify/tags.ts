@@ -11,6 +11,11 @@ export const CACHE_TAGS = {
   inventory: "shopify:inventory",
   product: (handle: string) => `shopify:product:${handle}`,
   collection: (handle: string) => `shopify:collection:${handle}`,
+  // Content (CLNT-171): Shopify pages and blog articles.
+  pages: "shopify:pages",
+  articles: "shopify:articles",
+  page: (handle: string) => `shopify:page:${handle}`,
+  article: (handle: string) => `shopify:article:${handle}`,
 } as const;
 
 /** Default revalidation window for catalog reads, in seconds. */
