@@ -1,17 +1,40 @@
 "use client";
 
 import { useEffect } from "react";
-import Image from "next/image";
 import { useCart } from "./CartProvider";
 import { formatPrice } from "@/lib/format";
 import { CloseIcon, PlusIcon, MinusIcon, ArrowRight } from "@/components/icons";
+import type { CartLine } from "@/lib/shopify/types";
 
 const FREE_SHIP_THRESHOLD = 150;
-// Mock headless handoff: in production this posts the cart to WooCommerce.
-const WOO_CHECKOUT_URL = "https://prosporter.com.au/cart/";
+
+/** Size / colour chosen on the variant, minus Shopify's single-variant default. */
+function variantSummary(line: CartLine): string | null {
+  const parts = line.merchandise.selectedOptions
+    .filter((o) => o.value && o.value !== "Default Title")
+    .map((o) => o.value);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+function lineImage(line: CartLine) {
+  return line.merchandise.image ?? line.merchandise.product.featuredImage;
+}
 
 export function CartDrawer() {
-  const { lines, isOpen, close, subtotal, count, setQty, remove } = useCart();
+  const {
+    lines,
+    isOpen,
+    close,
+    subtotal,
+    currencyCode,
+    count,
+    setQty,
+    remove,
+    checkoutUrl,
+    enabled,
+    isPending,
+    error,
+  } = useCart();
 
   // Lock body scroll while the drawer is open.
   useEffect(() => {
@@ -67,7 +90,26 @@ export function CartDrawer() {
           </button>
         </header>
 
-        {lines.length === 0 ? (
+        {error && (
+          <p role="status" className="border-b border-line bg-surface px-5 py-3 text-sm text-ink">
+            {error}
+          </p>
+        )}
+
+        {!enabled ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
+            <p className="display text-2xl text-ink">Bag unavailable</p>
+            <p className="text-sm text-muted">
+              Online ordering is offline for a moment. Please try again shortly.
+            </p>
+            <button
+              onClick={close}
+              className="mt-2 rounded-full bg-ink px-6 py-3 text-sm font-semibold text-paper transition-colors hover:bg-ink-2"
+            >
+              Continue shopping
+            </button>
+          </div>
+        ) : lines.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
             <p className="display text-2xl text-ink">Your bag is empty</p>
             <p className="text-sm text-muted">
@@ -88,7 +130,7 @@ export function CartDrawer() {
                 <p className="text-xs text-muted">
                   You’re{" "}
                   <span className="font-semibold text-ink">
-                    {formatPrice(remaining)}
+                    {formatPrice(remaining, currencyCode)}
                   </span>{" "}
                   away from free shipping
                 </p>
@@ -101,81 +143,110 @@ export function CartDrawer() {
               </div>
             )}
 
-            <ul className="flex-1 divide-y divide-line overflow-y-auto px-5">
-              {lines.map((line) => (
-                <li key={line.key} className="flex gap-4 py-4">
-                  <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-card bg-surface">
-                    <Image
-                      src={line.image}
-                      alt={line.name}
-                      fill
-                      sizes="80px"
-                      className="object-cover"
-                    />
-                  </div>
-                  <div className="flex flex-1 flex-col">
-                    <div className="flex justify-between gap-2">
-                      <p className="text-sm font-medium leading-snug text-ink">
-                        {line.name}
-                      </p>
-                      <p className="whitespace-nowrap text-sm font-semibold tabular-nums">
-                        {formatPrice(line.price * line.qty)}
-                      </p>
+            <ul
+              className={`flex-1 divide-y divide-line overflow-y-auto px-5 transition-opacity ${
+                isPending ? "opacity-60" : ""
+              }`}
+            >
+              {lines.map((line) => {
+                const image = lineImage(line);
+                const summary = variantSummary(line);
+                return (
+                  <li key={line.id} className="flex gap-4 py-4">
+                    <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-card bg-surface">
+                      {image && (
+                        // Plain <img>: cdn.shopify.com is not in next.config.ts
+                        // images.remotePatterns and that file is owned elsewhere.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={image.url}
+                          alt={image.altText ?? line.merchandise.product.title}
+                          width={80}
+                          height={96}
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                        />
+                      )}
                     </div>
-                    {line.size && (
-                      <p className="mt-0.5 text-xs text-muted">Size: {line.size}</p>
-                    )}
-                    <div className="mt-auto flex items-center justify-between pt-2">
-                      <div className="flex items-center rounded-full border border-line">
+                    <div className="flex flex-1 flex-col">
+                      <div className="flex justify-between gap-2">
+                        <p className="text-sm font-medium leading-snug text-ink">
+                          {line.merchandise.product.title}
+                        </p>
+                        <p className="whitespace-nowrap text-sm font-semibold tabular-nums">
+                          {formatPrice(
+                            Number(line.cost.totalAmount.amount) || 0,
+                            line.cost.totalAmount.currencyCode,
+                          )}
+                        </p>
+                      </div>
+                      {summary && <p className="mt-0.5 text-xs text-muted">{summary}</p>}
+                      {!line.merchandise.availableForSale && (
+                        <p className="mt-0.5 text-xs text-subtle">Out of stock</p>
+                      )}
+                      <div className="mt-auto flex items-center justify-between pt-2">
+                        <div className="flex items-center rounded-full border border-line">
+                          <button
+                            onClick={() => setQty(line.id, line.quantity - 1)}
+                            disabled={isPending}
+                            aria-label="Decrease quantity"
+                            className="grid h-8 w-8 place-items-center text-ink transition-colors hover:text-green-deep disabled:opacity-50"
+                          >
+                            <MinusIcon width={16} height={16} />
+                          </button>
+                          <span className="w-6 text-center text-sm tabular-nums">
+                            {line.quantity}
+                          </span>
+                          <button
+                            onClick={() => setQty(line.id, line.quantity + 1)}
+                            disabled={isPending}
+                            aria-label="Increase quantity"
+                            className="grid h-8 w-8 place-items-center text-ink transition-colors hover:text-green-deep disabled:opacity-50"
+                          >
+                            <PlusIcon width={16} height={16} />
+                          </button>
+                        </div>
                         <button
-                          onClick={() => setQty(line.key, line.qty - 1)}
-                          aria-label="Decrease quantity"
-                          className="grid h-8 w-8 place-items-center text-ink transition-colors hover:text-green-deep"
+                          onClick={() => remove(line.id)}
+                          disabled={isPending}
+                          className="text-xs text-subtle underline-offset-2 transition-colors hover:text-ink hover:underline disabled:opacity-50"
                         >
-                          <MinusIcon width={16} height={16} />
-                        </button>
-                        <span className="w-6 text-center text-sm tabular-nums">
-                          {line.qty}
-                        </span>
-                        <button
-                          onClick={() => setQty(line.key, line.qty + 1)}
-                          aria-label="Increase quantity"
-                          className="grid h-8 w-8 place-items-center text-ink transition-colors hover:text-green-deep"
-                        >
-                          <PlusIcon width={16} height={16} />
+                          Remove
                         </button>
                       </div>
-                      <button
-                        onClick={() => remove(line.key)}
-                        className="text-xs text-subtle underline-offset-2 transition-colors hover:text-ink hover:underline"
-                      >
-                        Remove
-                      </button>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
 
             <footer className="border-t border-line px-5 py-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted">Subtotal</span>
                 <span className="display text-xl tabular-nums">
-                  {formatPrice(subtotal)}
+                  {formatPrice(subtotal, currencyCode)}
                 </span>
               </div>
               <p className="mt-1 text-xs text-subtle">
                 Shipping &amp; taxes calculated at checkout.
               </p>
-              <a
-                href={WOO_CHECKOUT_URL}
-                className="mt-4 flex items-center justify-center gap-2 rounded-full bg-ink px-6 py-3.5 text-sm font-semibold text-paper transition-colors hover:bg-ink-2"
-              >
-                Checkout
-                <ArrowRight width={18} height={18} />
-              </a>
+              {checkoutUrl ? (
+                <a
+                  href={checkoutUrl}
+                  target="_self"
+                  rel="nofollow"
+                  className="mt-4 flex items-center justify-center gap-2 rounded-full bg-ink px-6 py-3.5 text-sm font-semibold text-paper transition-colors hover:bg-ink-2"
+                >
+                  Checkout
+                  <ArrowRight width={18} height={18} />
+                </a>
+              ) : (
+                <span className="mt-4 flex cursor-not-allowed items-center justify-center gap-2 rounded-full bg-ink/40 px-6 py-3.5 text-sm font-semibold text-paper">
+                  Checkout
+                </span>
+              )}
               <p className="mt-2 text-center text-[11px] text-subtle">
-                Secure checkout on prosporter.com.au
+                Secure checkout powered by Shopify
               </p>
             </footer>
           </>

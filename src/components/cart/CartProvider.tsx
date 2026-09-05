@@ -2,123 +2,192 @@
 
 import {
   createContext,
+  startTransition as reactStartTransition,
+  useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useReducer,
-  useRef,
+  useOptimistic,
   useState,
+  useTransition,
 } from "react";
+import type { Cart, CartLine } from "@/lib/shopify/types";
+import { nodes } from "@/lib/shopify/types";
+import {
+  addToCart,
+  applyDiscountCode as applyDiscountCodeAction,
+  getCurrentCart,
+  removeLine as removeLineAction,
+  updateLine as updateLineAction,
+} from "@/lib/shopify/cart-actions";
 
-export type CartLine = {
-  key: string; // slug + size
+/**
+ * Cart state backed by the Shopify Storefront Cart API (CLNT-171).
+ *
+ * The server owns the cart: `initialCart` is fetched in the root layout from
+ * the httpOnly `prosporter_cart` cookie, and every mutation returns the whole
+ * cart, which replaces local state. `useOptimistic` covers the round trip so
+ * +/- and Remove feel instant.
+ *
+ * Fallback: when Shopify is not configured (`enabled === false`, CI builds with
+ * SHOPIFY_OPTIONAL=1) the provider holds a permanently empty cart and the
+ * drawer renders an "unavailable" state. That is simpler and more honest than
+ * keeping a second localStorage cart that could never reach checkout.
+ */
+
+type OptimisticAction =
+  | { type: "setQuantity"; lineId: string; quantity: number }
+  | { type: "remove"; lineId: string };
+
+const money = (amount: string | number, currencyCode: string) => ({
+  amount: (typeof amount === "number" ? amount : Number(amount) || 0).toFixed(2),
+  currencyCode,
+});
+
+/** Recompute totals locally so the optimistic frame is not visibly wrong. */
+function recost(cart: Cart, lines: CartLine[]): Cart {
+  const currency = cart.cost.subtotalAmount.currencyCode;
+  const subtotal = lines.reduce((sum, l) => sum + (Number(l.cost.totalAmount.amount) || 0), 0);
+  const taxes = Number(cart.cost.totalTaxAmount?.amount ?? 0) || 0;
+  return {
+    ...cart,
+    totalQuantity: lines.reduce((n, l) => n + l.quantity, 0),
+    cost: {
+      ...cart.cost,
+      subtotalAmount: money(subtotal, currency),
+      totalAmount: money(subtotal + taxes, cart.cost.totalAmount.currencyCode),
+    },
+    lines: {
+      ...cart.lines,
+      edges: lines.map((node, i) => ({ cursor: cart.lines.edges[i]?.cursor ?? node.id, node })),
+    },
+  };
+}
+
+function optimisticReducer(cart: Cart | null, action: OptimisticAction): Cart | null {
+  if (!cart) return cart;
+  const current = nodes(cart.lines);
+  if (action.type === "remove") {
+    return recost(cart, current.filter((l) => l.id !== action.lineId));
+  }
+  const next = current
+    .map((l) => {
+      if (l.id !== action.lineId) return l;
+      const quantity = Math.max(0, action.quantity);
+      const unit = Number(l.cost.amountPerQuantity.amount) || 0;
+      return {
+        ...l,
+        quantity,
+        cost: { ...l.cost, totalAmount: money(unit * quantity, l.cost.totalAmount.currencyCode) },
+      };
+    })
+    .filter((l) => l.quantity > 0);
+  return recost(cart, next);
+}
+
+/**
+ * Legacy shape used by the pre-Shopify mock catalog. ProductCard/ProductDetail
+ * still call `add()` with it while the catalog slice migrates to Shopify types;
+ * the shim only opens the drawer. Replace those call sites with
+ * <AddToCartButton variantId=… /> and this member goes away.
+ */
+export type LegacyAddPayload = {
   slug: string;
   name: string;
   price: number;
   image: string;
   size: string | null;
-  qty: number;
+  qty?: number;
 };
 
-type AddPayload = Omit<CartLine, "key" | "qty"> & { qty?: number };
-
-type Action =
-  | { type: "add"; line: AddPayload }
-  | { type: "remove"; key: string }
-  | { type: "setQty"; key: string; qty: number }
-  | { type: "clear" }
-  | { type: "hydrate"; lines: CartLine[] };
-
-const keyFor = (slug: string, size: string | null) => `${slug}__${size ?? "os"}`;
-
-function reducer(state: CartLine[], action: Action): CartLine[] {
-  switch (action.type) {
-    case "hydrate":
-      return action.lines;
-    case "add": {
-      const key = keyFor(action.line.slug, action.line.size);
-      const existing = state.find((l) => l.key === key);
-      const qty = action.line.qty ?? 1;
-      if (existing) {
-        return state.map((l) => (l.key === key ? { ...l, qty: l.qty + qty } : l));
-      }
-      return [...state, { ...action.line, key, qty }];
-    }
-    case "remove":
-      return state.filter((l) => l.key !== action.key);
-    case "setQty":
-      return state
-        .map((l) => (l.key === action.key ? { ...l, qty: Math.max(0, action.qty) } : l))
-        .filter((l) => l.qty > 0);
-    case "clear":
-      return [];
-    default:
-      return state;
-  }
-}
-
-type CartContext = {
+type CartContextValue = {
+  /** Optimistic cart: what the UI should render right now. */
+  cart: Cart | null;
   lines: CartLine[];
   count: number;
+  /** Subtotal as a number in the cart currency, for `formatPrice`. */
   subtotal: number;
+  currencyCode: string;
+  checkoutUrl: string | null;
+  /** False when Shopify is not configured. */
+  enabled: boolean;
   isOpen: boolean;
+  isPending: boolean;
+  error: string | null;
   open: () => void;
   close: () => void;
-  add: (line: AddPayload) => void;
-  remove: (key: string) => void;
-  setQty: (key: string, qty: number) => void;
-  clear: () => void;
+  dismissError: () => void;
+  addVariant: (variantId: string, quantity?: number) => void;
+  setQty: (lineId: string, quantity: number) => void;
+  remove: (lineId: string) => void;
+  applyDiscount: (code: string) => void;
+  refresh: () => void;
+  /** @deprecated mock-catalog shim; use AddToCartButton. */
+  add: (line: LegacyAddPayload) => void;
 };
 
-const Ctx = createContext<CartContext | null>(null);
-const STORAGE_KEY = "prosporter.cart.v1";
+const Ctx = createContext<CartContextValue | null>(null);
 
-export function CartProvider({ children }: { children: React.ReactNode }) {
-  const [lines, dispatch] = useReducer(reducer, []);
+export function CartProvider({
+  children,
+  initialCart = null,
+  enabled = true,
+}: {
+  children: React.ReactNode;
+  initialCart?: Cart | null;
+  enabled?: boolean;
+}) {
+  // Server truth arrives once, at mount. Every later change comes back from a
+  // server action's return value, so there is no prop/state sync effect.
+  const [cart, setCart] = useState<Cart | null>(initialCart);
+  const [optimisticCart, applyOptimistic] = useOptimistic(cart, optimisticReducer);
   const [isOpen, setOpen] = useState(false);
-  // Effects run in order on mount: hydrate first, then persist. The persist
-  // effect must skip that first run or it would overwrite the stored cart with
-  // the empty initial state before the hydrate dispatch has re-rendered.
-  const hydrated = useRef(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
-  // Load persisted cart once on mount.
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) dispatch({ type: "hydrate", lines: JSON.parse(raw) });
-    } catch {
-      /* ignore malformed storage */
-    }
-  }, []);
+  const run = useCallback(
+    (work: () => Promise<{ cart: Cart | null; error: string | null }>, optimistic?: OptimisticAction) => {
+      startTransition(async () => {
+        if (optimistic) applyOptimistic(optimistic);
+        const result = await work();
+        reactStartTransition(() => {
+          setCart(result.cart);
+          setError(result.error);
+        });
+      });
+    },
+    [applyOptimistic],
+  );
 
-  // Persist on change (after initial hydration).
-  useEffect(() => {
-    if (!hydrated.current) {
-      hydrated.current = true;
-      return;
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(lines));
-  }, [lines]);
-
-  const value = useMemo<CartContext>(() => {
-    const count = lines.reduce((n, l) => n + l.qty, 0);
-    const subtotal = lines.reduce((n, l) => n + l.qty * l.price, 0);
+  const value = useMemo<CartContextValue>(() => {
+    const lines = nodes(optimisticCart?.lines);
+    const currencyCode = optimisticCart?.cost.subtotalAmount.currencyCode ?? "AUD";
     return {
+      cart: optimisticCart,
       lines,
-      count,
-      subtotal,
+      count: optimisticCart?.totalQuantity ?? 0,
+      subtotal: Number(optimisticCart?.cost.subtotalAmount.amount ?? 0) || 0,
+      currencyCode,
+      checkoutUrl: optimisticCart?.checkoutUrl ?? null,
+      enabled,
       isOpen,
+      isPending,
+      error,
       open: () => setOpen(true),
       close: () => setOpen(false),
-      add: (line) => {
-        dispatch({ type: "add", line });
+      dismissError: () => setError(null),
+      addVariant: (variantId, quantity = 1) => {
         setOpen(true);
+        run(() => addToCart(variantId, quantity));
       },
-      remove: (key) => dispatch({ type: "remove", key }),
-      setQty: (key, qty) => dispatch({ type: "setQty", key, qty }),
-      clear: () => dispatch({ type: "clear" }),
+      setQty: (lineId, quantity) =>
+        run(() => updateLineAction(lineId, quantity), { type: "setQuantity", lineId, quantity }),
+      remove: (lineId) => run(() => removeLineAction(lineId), { type: "remove", lineId }),
+      applyDiscount: (code) => run(() => applyDiscountCodeAction(code)),
+      refresh: () =>
+        run(async () => ({ cart: await getCurrentCart(), error: null })),
+      add: () => setOpen(true),
     };
-  }, [lines, isOpen]);
+  }, [optimisticCart, enabled, isOpen, isPending, error, run]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
