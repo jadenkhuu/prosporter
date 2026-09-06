@@ -97,6 +97,106 @@ across regions and instances, so a webhook hitting one function invalidates for 
 The webhook route's duplicate-suppression LRU is per instance and best effort; Shopify
 retries are idempotent anyway because revalidation is.
 
+## Security headers (CLNT-179, defects D5 and D6)
+
+`next.config.ts` returns one `headers()` rule matching `/:path*`, so every response —
+HTML, RSC payload, `/_next/*` asset, API route — carries the same set. The values and
+the reasoning behind each one live in `src/lib/security-headers.ts`, covered by
+`src/lib/__tests__/security-headers.test.mjs` (`npm test`).
+
+| Header | Value | Why |
+|---|---|---|
+| `X-Content-Type-Options` | `nosniff` | Stops MIME sniffing turning a user-supplied response into script. |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Full path to our own origin, origin only cross-site, nothing on an HTTPS→HTTP downgrade. |
+| `X-Frame-Options` | `DENY` | Clickjacking. Kept next to CSP `frame-ancestors` for browsers that honour only one. |
+| `Permissions-Policy` | `accelerometer=(), camera=(), geolocation=(), microphone=(), payment=(), usb=(), interest-cohort=(), browsing-topics=()` | Nothing here uses any of them. `payment=()` is safe because checkout runs on Shopify's origin, not this one. The last two are Chrome's ad-topics API under both names. |
+| `Content-Security-Policy` | see below | XSS and injection. |
+
+HSTS is **not** set here: Vercel already sends
+`Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`. Setting it in
+two places invites them to drift.
+
+### The policy
+
+```
+default-src 'self';
+script-src 'self' 'unsafe-inline' https://www.googletagmanager.com;
+style-src 'self' 'unsafe-inline';
+img-src 'self' data: blob: https://cdn.shopify.com https://prosporter.com.au https://www.prosporter.com.au https://www.googletagmanager.com https://*.google-analytics.com;
+font-src 'self' data:;
+connect-src 'self' https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com;
+frame-src 'none';
+frame-ancestors 'none';
+form-action 'self';
+base-uri 'self';
+object-src 'none';
+manifest-src 'self';
+upgrade-insecure-requests
+```
+
+Development adds `'unsafe-eval'` to `script-src` (React rebuilds server error stacks with
+`eval` for the dev overlay) and `ws: wss:` to `connect-src` (the Turbopack HMR socket).
+Neither is present in production. The switch is `NODE_ENV === "development"`, read in
+`next.config.ts` and passed into `securityHeaders()`.
+
+What each non-`'self'` source is for:
+
+- **`script-src 'unsafe-inline'`** — `src/components/analytics/Analytics.tsx` renders an
+  inline `id="ga4-init"` bootstrap (the gtag stub, Consent Mode v2 defaults and `config`,
+  which must run during parse, before hydration), and Next.js inlines its own bootstrap
+  and flight-data scripts. JSON-LD `<script type="application/ld+json">` blocks are *not*
+  the reason — CSP never executes them, so they need no allowance.
+- **`script-src https://www.googletagmanager.com`** — `gtag.js`, loaded `afterInteractive`.
+  It requests nothing while `NEXT_PUBLIC_GA_MEASUREMENT_ID` is unset.
+- **`style-src 'unsafe-inline'`** — Next.js and `next/image` emit inline `<style>` blocks
+  and `style` attributes. Nothing loads a third-party stylesheet; `next/font/google`
+  self-hosts its faces at build time, which is why `font-src` is `'self'` only.
+- **`img-src https://cdn.shopify.com`** — every product image, matching the
+  `remotePatterns` allow-list in `next.config.ts`. `data:`/`blob:` cover `next/image`
+  placeholders; the two Google hosts cover GA's pixel fallback.
+- **`img-src https://prosporter.com.au`** — **transitional.** Several migrated Shopify
+  page and article bodies (`/about`, `/faq`, `/privacy-policy` and others) still hotlink
+  `wp-content/uploads/...` on the legacy WordPress origin instead of the Shopify CDN;
+  without this those images go blank. Drop this source once the bodies are re-pointed at
+  `cdn.shopify.com`. After cutover the storefront itself serves `prosporter.com.au`, so
+  `'self'` covers it anyway.
+- **`connect-src` Google hosts** — GA4 beacons. There is deliberately **no** Shopify
+  origin here: cart reads and writes are server actions that POST to this origin, and no
+  client component fetches the Storefront API.
+- **`form-action 'self'`** — the contact form and the cart drawer are server actions, and
+  both search forms target `/search`. The Shopify checkout is an `<a href>` navigation
+  from `CartDrawer`, which `form-action` does not govern, so no Shopify origin is needed.
+
+### Why no nonce
+
+The Next.js guide's strict CSP mints a per-request nonce in `src/proxy.ts`, which forces
+**dynamic rendering on every route**. This storefront is almost entirely prerendered and
+its LCP is already over the 2.5 s standard (QA defect D3), so trading the prerender for a
+nonce is the wrong trade today. Revisit if LCP is fixed and an inline-script XSS becomes
+a real risk; the change is confined to `src/proxy.ts` plus the `script-src`/`style-src`
+lines here.
+
+### Extending it
+
+1. Edit `src/lib/security-headers.ts` — add the origin to the narrowest directive that
+   works, with a comment saying what needs it. Never widen `default-src`.
+2. Update the test in `src/lib/__tests__/security-headers.test.mjs`.
+3. Rebuild before checking: `next start` serves the config snapshot written into
+   `.next/required-server-files.json` at build time, so an edited policy does **not**
+   appear until `npm run build` runs again.
+4. Verify with a real browser, not just `curl -I`:
+
+```bash
+npm run build && PORT=3177 npm run start
+curl -s -D - -o /dev/null http://127.0.0.1:3177/ | grep -i 'content-security'
+```
+
+   Then load `/`, `/shop`, a product, `/search?q=…`, `/contact`, `/blog` and an article
+   with DevTools open and confirm the console reports zero CSP violations. `scripts/qa/cdp.mjs`
+   drives headless Chrome for this without installing anything. To exercise the GA4 half,
+   build with `NEXT_PUBLIC_GA_MEASUREMENT_ID` set to a throwaway property — with it unset,
+   the inline bootstrap and `gtag.js` never render and the policy is not fully tested.
+
 ## SEO routes: sitemap, robots and structured data
 
 | Route | Source | Notes |

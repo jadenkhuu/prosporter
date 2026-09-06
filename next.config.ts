@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import legacyRedirects from "./docs/redirects/redirects.json";
+import { securityHeaders } from "./src/lib/security-headers.ts";
 
 /**
  * Legacy WooCommerce -> storefront redirects (CLNT-175).
@@ -28,6 +29,23 @@ const nextConfig: NextConfig = {
   },
   async redirects(): Promise<Redirect[]> {
     return legacyRedirects satisfies Redirect[];
+  },
+  /**
+   * Security headers on every response (CLNT-179, defects D5 and D6). The list
+   * and the reasoning behind each CSP directive live in
+   * `src/lib/security-headers.ts`; the policy is documented in
+   * `docs/deployment.md` § Security headers.
+   *
+   * `/:path*` matches every route including `/`. HSTS is not set here — the
+   * host (Vercel) already sends `max-age=63072000; includeSubDomains; preload`.
+   */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: securityHeaders(process.env.NODE_ENV === "development"),
+      },
+    ];
   },
 };
 

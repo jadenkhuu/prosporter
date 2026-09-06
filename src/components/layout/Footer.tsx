@@ -25,13 +25,38 @@ const cols = [
       .filter((c) => c.type === "club")
       .map((c) => ({ label: c.label, href: `/shop/clubs/${c.id}` })),
   },
+  {
+    // CLNT-179 defect D2: /contact, /faq and /size-guide are live pages with no
+    // inbound link anywhere on the site, so a crawl from "/" never reaches them.
+    // The handles are contractual — they are the preserved legacy WordPress
+    // paths in docs/redirects/redirect-map.csv, listed as LEGACY_PAGE_HANDLES in
+    // src/lib/content-source.ts and resolved by src/app/(content)/[handle]. The
+    // labels are ours: the Shopify page titles can be edited by the client, and
+    // a footer link that renames itself is worse than one that does not.
+    title: "Help",
+    links: [
+      { label: "Contact", href: "/contact" },
+      { label: "FAQ", href: "/faq" },
+      { label: "Size Guide", href: "/size-guide" },
+    ],
+  },
+  {
+    title: "Company & Legal",
+    links: [
+      { label: "About", href: "/about" },
+      { label: "Blog", href: "/blog" },
+      { label: "Terms of Service", href: "/terms-of-service" },
+      { label: "Refund Policy", href: "/refund-policy" },
+      { label: "Privacy Policy", href: "/privacy-policy" },
+    ],
+  },
 ];
 
 export function Footer() {
   return (
     <footer className="mt-20 border-t border-line bg-surface">
       <div className="mx-auto max-w-[1400px] px-4 py-14 sm:px-6 lg:px-8">
-        <div className="grid gap-10 lg:grid-cols-[1.4fr_repeat(3,1fr)]">
+        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_repeat(5,1fr)]">
           <div>
             <Link href="/" className="inline-flex items-center" aria-label="ProSporter home">
               <Image
@@ -48,7 +73,7 @@ export function Footer() {
             </p>
           </div>
           {cols.map((col) => (
-            <div key={col.title}>
+            <nav key={col.title} aria-label={col.title}>
               <h3 className="eyebrow mb-3 text-subtle">{col.title}</h3>
               <ul className="space-y-2">
                 {col.links.map((l) => (
@@ -62,7 +87,7 @@ export function Footer() {
                   </li>
                 ))}
               </ul>
-            </div>
+            </nav>
           ))}
         </div>
         <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-line pt-6 text-xs text-subtle sm:flex-row sm:items-center">
