@@ -78,13 +78,30 @@ export function deploymentEnvironment(): DeploymentEnvironment {
   return process.env.NODE_ENV === "production" ? "production" : "development";
 }
 
+/** True when the origin was set explicitly (`NEXT_PUBLIC_SITE_URL` / `SITE_URL`). */
+export function hasExplicitSiteUrl(): boolean {
+  return (
+    normalizeOrigin(process.env.NEXT_PUBLIC_SITE_URL) !== null ||
+    normalizeOrigin(process.env.SITE_URL) !== null
+  );
+}
+
 /**
- * Only the production deployment may be crawled. Every preview URL is a
- * duplicate of production and would compete with it in the index, so
- * `src/app/robots.ts` returns disallow-all for anything that is not production.
+ * Only the production deployment may be crawled, and only once the launch
+ * origin has been set explicitly. Two reasons:
+ *
+ *  - every preview URL is a duplicate of production and would compete with it
+ *    in the index;
+ *  - before cutover the Vercel production alias is a duplicate of the *live*
+ *    WooCommerce store on the real domain. Leaving `NEXT_PUBLIC_SITE_URL` unset
+ *    until cutover day keeps the pre-launch storefront out of the index while
+ *    QA runs against it.
+ *
+ * `src/app/robots.ts` returns disallow-all and `src/proxy.ts` adds
+ * `X-Robots-Tag: noindex` whenever this is false.
  */
 export function isIndexableDeployment(): boolean {
-  return deploymentEnvironment() === "production";
+  return deploymentEnvironment() === "production" && hasExplicitSiteUrl();
 }
 
 /** One URL in `src/app/sitemap.ts`. `path` is an app path, not an absolute URL. */

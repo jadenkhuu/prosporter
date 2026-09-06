@@ -18,7 +18,7 @@ No Admin API credential is ever configured on the host.
    | `SHOPIFY_STORE_DOMAIN` | `prosporter.myshopify.com` | `*.myshopify.com` only |
    | `SHOPIFY_STOREFRONT_TOKEN` | Headless channel public token | dev storefront token for now; swap for a production storefront token before go-live |
    | `SHOPIFY_WEBHOOK_SECRET` | ProSporter-migration app client secret | HMAC key for `/api/webhooks/shopify` (see `docs/webhooks.md`) |
-   | `NEXT_PUBLIC_SITE_URL` | `https://prosporter.com.au` | **Production only.** Canonical origin; see "SEO routes" below |
+   | `NEXT_PUBLIC_SITE_URL` | `https://prosporter.com.au` | **Production only, set on cutover day.** Canonical origin and the indexing switch; see "SEO routes" below |
    | `RESEND_API_KEY` | Resend API key | Production **and** Preview. Contact form; see "Contact form" below |
    | `CONTACT_TO_EMAIL` | client-nominated inbox | Production and Preview. **Not yet supplied** |
    | `CONTACT_FROM_EMAIL` | e.g. `website@prosporter.com.au` | Production and Preview. Domain must be verified in Resend |
@@ -112,18 +112,23 @@ cache window in `src/lib/shopify/tags.ts`.
 
 `NEXT_PUBLIC_SITE_URL` (`src/lib/site.ts`) is the only origin the app knows. It feeds
 `metadataBase` in the root layout, every `alternates.canonical`, every Open Graph URL,
-the `Sitemap:` line in robots.txt and every `<loc>` in the sitemap. Set it **on Production
-only**, to the live origin (`https://prosporter.com.au` after cutover; the `*.vercel.app`
-production alias before it). Leave it unset on Preview so previews fall back to
-`VERCEL_PROJECT_PRODUCTION_URL` / `VERCEL_URL`. `SITE_URL` is accepted as an alias.
+the `Sitemap:` line in robots.txt and every `<loc>` in the sitemap. It is also the
+**indexing switch**: while it is unset, the production deployment returns disallow-all
+from robots.txt and `X-Robots-Tag: noindex, nofollow` on every page, because before
+cutover the `*.vercel.app` alias is a duplicate of the live WooCommerce store on the real
+domain. Set it **on Production only, on cutover day**, to `https://prosporter.com.au`.
+Never set it to the `*.vercel.app` alias. Leave it unset on Preview so previews fall back
+to `VERCEL_PROJECT_PRODUCTION_URL` / `VERCEL_URL`. `SITE_URL` is accepted as an alias.
 
 Because both routes are prerendered, the variable must be present **at build time**, not
 just at runtime. Changing it requires a redeploy, not just a redeploy of the env var.
 
-### Preview deployments are never indexed
+### Nothing is indexed before cutover, and previews never are
 
-`src/app/robots.ts` returns `User-Agent: * / Disallow: /` whenever `VERCEL_ENV` is not
-`production`, so every per-commit preview URL is disallow-all. This is separate from the
+`src/app/robots.ts` returns `User-Agent: * / Disallow: /` and `src/proxy.ts` adds
+`X-Robots-Tag: noindex, nofollow` whenever `VERCEL_ENV` is not `production` **or**
+`NEXT_PUBLIC_SITE_URL` is unset (`isIndexableDeployment()` in `src/lib/site.ts`). So every
+per-commit preview URL and the pre-cutover production alias are both kept out of the index. This is separate from the
 two places that carry a real `noindex`: `/search` (route metadata, `noindex, follow`) and
 the 410 bodies in `src/proxy.ts` (`X-Robots-Tag: noindex`). robots.txt is a crawl
 directive, not an index directive — do not replace either of those with it.

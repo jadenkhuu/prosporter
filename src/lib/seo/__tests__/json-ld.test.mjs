@@ -99,8 +99,9 @@ test("absoluteUrl produces slash-free paths and leaves the root bare", () => {
 
 // -------------------------------------------------------------- environment
 
-test("only VERCEL_ENV=production is indexable", () => {
+test("only VERCEL_ENV=production with an explicit site URL is indexable", () => {
   process.env.VERCEL_ENV = "production";
+  process.env.NEXT_PUBLIC_SITE_URL = "https://prosporter.com.au";
   assert.equal(deploymentEnvironment(), "production");
   assert.equal(isIndexableDeployment(), true);
 
@@ -109,6 +110,17 @@ test("only VERCEL_ENV=production is indexable", () => {
     assert.equal(deploymentEnvironment(), env);
     assert.equal(isIndexableDeployment(), false, `VERCEL_ENV=${env} must not be indexable`);
   }
+});
+
+test("production without an explicit site URL stays out of the index (pre-cutover)", () => {
+  process.env.VERCEL_ENV = "production";
+  delete process.env.NEXT_PUBLIC_SITE_URL;
+  delete process.env.SITE_URL;
+  process.env.VERCEL_PROJECT_PRODUCTION_URL = "prosporter.vercel.app";
+  assert.equal(siteUrl(), "https://prosporter.vercel.app");
+  assert.equal(isIndexableDeployment(), false);
+  process.env.SITE_URL = "https://prosporter.com.au";
+  assert.equal(isIndexableDeployment(), true);
 });
 
 test("off Vercel the environment comes from NODE_ENV", () => {

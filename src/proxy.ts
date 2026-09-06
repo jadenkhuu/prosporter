@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isIndexableDeployment } from "@/lib/site";
 import type { NextRequest } from "next/server";
 
 import goneJson from "../docs/redirects/gone.json";
@@ -116,7 +117,14 @@ export function proxy(request: NextRequest): NextResponse {
     return NextResponse.redirect(new URL(normalized + search, request.url), 308);
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  // Before cutover the production alias duplicates the live WooCommerce store,
+  // and previews duplicate production. robots.txt only stops crawling; this
+  // header stops indexing of anything a crawler reaches through a link.
+  if (!isIndexableDeployment()) {
+    response.headers.set("x-robots-tag", "noindex, nofollow");
+  }
+  return response;
 }
 
 export const config = {
