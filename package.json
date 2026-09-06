@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test src/lib/__tests__/*.test.mjs src/lib/shopify/__tests__/*.test.mjs src/lib/seo/__tests__/*.test.mjs",
+    "test": "node --test src/lib/__tests__/*.test.mjs src/lib/contact/__tests__/*.test.mjs src/lib/shopify/__tests__/*.test.mjs src/lib/seo/__tests__/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "hooks:install": "git config core.hooksPath .githooks",
     "check": "npm run lint && npm run typecheck && SHOPIFY_OPTIONAL=1 npm run build && npm audit --audit-level=high"

@@ -60,6 +60,13 @@ export const LEGACY_PAGE_HANDLES = [
   "terms-of-service",
 ] as const;
 
+/**
+ * The one page that gets an interactive component alongside its migrated copy:
+ * the contact form (`src/components/content/ContactSection.tsx`), replacing the
+ * Contact Form 7 block that `content-html.ts` strips. See `docs/forms.md`.
+ */
+export const CONTACT_PAGE_HANDLE = "contact";
+
 /** Blog slugs the legacy redirect map points at, read straight from the map. */
 export const LEGACY_ARTICLE_SLUGS: string[] = Array.from(
   new Set(

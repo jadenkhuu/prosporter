@@ -19,6 +19,10 @@ No Admin API credential is ever configured on the host.
    | `SHOPIFY_STOREFRONT_TOKEN` | Headless channel public token | dev storefront token for now; swap for a production storefront token before go-live |
    | `SHOPIFY_WEBHOOK_SECRET` | ProSporter-migration app client secret | HMAC key for `/api/webhooks/shopify` (see `docs/webhooks.md`) |
    | `NEXT_PUBLIC_SITE_URL` | `https://prosporter.com.au` | **Production only.** Canonical origin; see "SEO routes" below |
+   | `RESEND_API_KEY` | Resend API key | Production **and** Preview. Contact form; see "Contact form" below |
+   | `CONTACT_TO_EMAIL` | client-nominated inbox | Production and Preview. **Not yet supplied** |
+   | `CONTACT_FROM_EMAIL` | e.g. `website@prosporter.com.au` | Production and Preview. Domain must be verified in Resend |
+   | `CONTACT_FORM_SECRET` | `openssl rand -hex 32` | Production and Preview; optional but recommended |
    | `LOG_LEVEL` | `info` | optional |
 
    Do **not** set `SHOPIFY_OPTIONAL` on Vercel. It exists only so CI can build without a
@@ -41,6 +45,49 @@ No Admin API credential is ever configured on the host.
 - Verify: `curl -sI https://<host>/product/nago` → 200; `https://<host>/cart` → 410;
   `https://<host>/product/<any>/` → single 308. `python3 scripts/redirects/verify_redirects.py`
   can be pointed at the host.
+
+## Contact form
+
+`/contact` renders a real form (`docs/forms.md`) that emails each submission through
+Resend. Four variables drive it, all read by `src/lib/contact/config.ts` and nothing else:
+
+| Name | Required | Notes |
+|---|---|---|
+| `RESEND_API_KEY` | yes | Resend account API key. The **free tier is $0**; moving to any paid tier is a variation and needs the client's written approval (schedule section 8) |
+| `CONTACT_TO_EMAIL` | yes | Where submissions land. **Client dependency — the client has not nominated the address yet** (schedule section 9). Acceptance criterion 3 cannot be signed off until it exists |
+| `CONTACT_FROM_EMAIL` | yes | Envelope sender. Must sit on a domain **verified in Resend**, which needs SPF and DKIM records published on `prosporter.com.au`. Publishing DNS is a client action; until it is done, mail either fails to send or is filed as spam |
+| `CONTACT_FORM_SECRET` | no | HMAC key for the anti-spam timing token. Unset means the token is unsigned and forgeable — set it |
+
+Set all four on **Production and Preview**. Preview is where the form is exercised
+before go-live, and a preview deployment with no configuration silently switches to the
+log-only adapter.
+
+Behaviour when the variables are missing is deliberate, not accidental:
+
+- **development / preview, unconfigured** — the form renders and works, and each
+  submission is logged (outcome and counts only, never its contents) instead of emailed.
+- **production, unconfigured** — no form is rendered. `/contact` shows a short note
+  pointing at the phone number and email address already in the page copy, and logs one
+  `contact.delivery_unconfigured` warning per instance. A form that accepted a message
+  and dropped it would be worse than none.
+
+`/contact` is the one `(content)` page that renders on demand rather than being
+prerendered: the form's timing token has to be stamped per request. Every other handle
+still comes out of `generateStaticParams`.
+
+Verify after a deploy:
+
+```bash
+# The form is present (not the fallback) once the variables are set
+curl -s https://<host>/contact | grep -c 'name="firstName"'   # 1
+
+# Submissions log an outcome with no personal data
+vercel logs <deployment> | grep contact.
+```
+
+Then send one real message and confirm it arrives at `CONTACT_TO_EMAIL`, that the reply
+address is the sender's, and that the client can reply to it. That check is the evidence
+for acceptance criterion 3.
 
 ## Caching model on Vercel
 

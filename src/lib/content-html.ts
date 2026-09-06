@@ -120,11 +120,12 @@ export function sanitizeContentHtml(html: string | null | undefined): string {
   // 2. Scripts, styles, embeds, icon SVGs and forms, contents included.
   //
   //    The migrated Contact page carries a Contact Form 7 block (`<form>` plus
-  //    inputs and a loader script). It is stripped here on purpose: the
-  //    storefront has no form backend yet, and a dead form is worse than none.
-  //    TODO(CLNT-171 follow-up): when a contact endpoint exists, render a real
-  //    form component on the contact route instead of relying on the phone and
-  //    email links that the migrated copy already contains.
+  //    inputs and a loader script) whose action posts to a WordPress endpoint
+  //    that no longer exists. It stays stripped: the replacement is a real
+  //    React form, `src/components/content/ContactSection.tsx`, which the
+  //    `/contact` route renders after this sanitised copy. Any other `<form>`
+  //    in migrated content is dead markup and is removed for the same reason.
+  //    `docs/forms.md` records the disposition of all three legacy forms.
   out = dropElements(out);
 
   // 3 + 4. Allowlist tags, allowlist attributes.

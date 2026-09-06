@@ -8,12 +8,12 @@ Usage evidence counts data fingerprints found in the authenticated export; a zer
 |---|---:|---|---|---|
 | Advanced Coupons for WooCommerce Free | 4.7.5 | 5 coupons (coupon rules) | yes | recreate as Shopify discounts; check unsupported rules |
 | Advanced Order Export For WooCommerce | 4.1.0 | no data fingerprint | no | not migrated (confirm with client) |
-| Akismet Anti-spam: Spam Protection | 5.7.2 | no data fingerprint | no | not migrated (confirm with client) |
+| Akismet Anti-spam: Spam Protection | 5.7.2 | no data fingerprint | no | not migrated — the rebuilt contact form carries its own honeypot, timing token and rate limiter (`docs/forms.md`) |
 | Autocomplete Address and Location Picker for WooCommerce | 1.2.2 | no data fingerprint | no | not migrated (confirm with client) |
 | Barcode Scanner with Inventory & Order Manager - (business) | 1.10.2 | no data fingerprint | no | not migrated (confirm with client) |
 | Bridge Core | 3.3.4.8 | no data fingerprint | no | not migrated (confirm with client) |
 | Code Snippets | 3.9.6 | no data fingerprint | no | not migrated (confirm with client) |
-| Contact Form 7 | 6.1.7 | 3 forms (forms) | yes | rebuild in Next.js with server action / email provider |
+| Contact Form 7 | 6.1.7 | 3 forms (forms) | yes | **done** — form 253 rebuilt as a Next.js server action + Resend; forms 96 and 97 retired (`docs/forms.md`) |
 | Easy Product Bundles for WooCommerce | 6.20.1 | 1 products (bundles) | yes | manual recreation; decide bundle approach |
 | Elementor | 4.2.3 | 26 pages/posts built with Elementor | yes (layout) | content re-authored in Next.js; copy migrated as HTML/Markdown |
 | Elementor Pro | 4.2.2 | 26 pages/posts built with Elementor | yes (layout) | content re-authored in Next.js; copy migrated as HTML/Markdown |

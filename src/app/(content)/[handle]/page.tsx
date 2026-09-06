@@ -1,7 +1,12 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
-import { getContentPage, getContentPageHandles } from "@/lib/content-source";
+import {
+  CONTACT_PAGE_HANDLE,
+  getContentPage,
+  getContentPageHandles,
+} from "@/lib/content-source";
+import { ContactSection } from "@/components/content/ContactSection";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { buildBreadcrumbJsonLd } from "@/lib/seo/json-ld";
 import { OG_DEFAULTS } from "@/lib/seo/metadata";
@@ -90,6 +95,13 @@ export default async function ContentPageRoute({
           dangerouslySetInnerHTML={{ __html: page.html }}
         />
       )}
+      {/*
+        The migrated copy keeps its phone number, email addresses and opening
+        hours; only the dead Contact Form 7 markup was stripped
+        (`src/lib/content-html.ts`). This puts a working form back underneath
+        it, or a pointer to those details when delivery is unconfigured.
+      */}
+      {handle === CONTACT_PAGE_HANDLE && <ContactSection />}
     </article>
   );
 }
