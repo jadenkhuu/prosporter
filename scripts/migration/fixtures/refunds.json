@@ -1,0 +1,43 @@
+[
+  {
+    "id": 9101,
+    "date_created": "2026-01-05T05:00:00",
+    "date_created_gmt": "2026-01-05T05:00:00",
+    "amount": "37.50",
+    "reason": "Returned one tee",
+    "refunded_by": 1,
+    "refunded_payment": true,
+    "meta_data": [
+      {"id": 91, "key": "_refund_type", "value": "partial"}
+    ],
+    "line_items": [
+      {
+        "id": 41,
+        "name": "Fixture Training Tee",
+        "parent_name": "Fixture Training Tee",
+        "product_id": 101,
+        "variation_id": 1011,
+        "quantity": -1,
+        "sku": "FIX-TEE-M",
+        "price": -37.5,
+        "subtotal": "-37.50",
+        "subtotal_tax": "0.00",
+        "total": "-37.50",
+        "total_tax": "0.00",
+        "taxes": [],
+        "meta_data": [
+          {"id": 92, "key": "_refunded_item_id", "value": "1", "display_key": "_refunded_item_id", "display_value": "1"},
+          {"id": 93, "key": "size", "value": "M", "display_key": "Size", "display_value": "M"}
+        ]
+      }
+    ],
+    "shipping_lines": [],
+    "tax_lines": [],
+    "fee_lines": [],
+    "_links": {
+      "up": [
+        {"href": "https://fixtures.invalid/wp-json/wc/v3/orders/9001"}
+      ]
+    }
+  }
+]

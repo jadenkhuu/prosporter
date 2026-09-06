@@ -1,0 +1,14 @@
+[
+  {
+    "id": "stripe",
+    "title": "Credit Card (Stripe)",
+    "method_title": "Stripe",
+    "enabled": true
+  },
+  {
+    "id": "wallet_gateway",
+    "title": "Wallet",
+    "method_title": "Wallet",
+    "enabled": true
+  }
+]

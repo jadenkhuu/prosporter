@@ -10,6 +10,9 @@ loader can hit and exactly how a rerun recovers) and
 **[cutover-runbook.md](cutover-runbook.md)** (ordered rehearsal and cutover steps,
 rollback, and the API-call-derived time estimates).
 
+Historical orders are not loaded into Shopify; they are delivered as a CSV archive built
+by `scripts/migration/archive.py` — see **[archive.md](archive.md)**.
+
 Everything in `docs/migration/` is derived and PII-free. Every artefact that contains
 real customer or catalog data is written under `exports/` (git-ignored) and never leaves it.
 
