@@ -1,16 +1,16 @@
-"use client";
-
 import Link from "next/link";
 import Image from "next/image";
 import type { CatalogProduct } from "@/lib/catalog-view";
 import { formatPriceRange, swatchFor } from "@/lib/format";
-import { useCart } from "@/components/cart/CartProvider";
-import { PlusIcon } from "@/components/icons";
+import { PLACEHOLDER_IMAGE } from "@/components/product/placeholder";
+import { QuickAddButton } from "@/components/product/QuickAddButton";
 
-/** Shown when a product has no image yet (mid-migration drafts). */
-/** Neutral tile for the ~40 products that have no photo in the source yet. */
-export const PLACEHOLDER_IMAGE = "/products/placeholder.svg";
-
+/**
+ * Server component. The card is static markup — image, badges, title, price,
+ * swatches — and only the quick-add button needs the cart, so that one control
+ * is the client island (`QuickAddButton`). Grids of these are what the LCP
+ * element usually is on a collection page (QA defect D3).
+ */
 export function ProductCard({
   product,
   priority = false,
@@ -18,26 +18,10 @@ export function ProductCard({
   product: CatalogProduct;
   priority?: boolean;
 }) {
-  const { add, addVariant } = useCart();
   const hasSizes = product.sizes.length > 0;
   // Only single-variant products can be added straight from the grid; anything
   // with options sends the shopper to the PDP to choose.
   const canQuickAdd = product.inStock && (product.variantId !== null || !hasSizes);
-
-  const quickAdd = () => {
-    if (product.variantId) {
-      addVariant(product.variantId);
-      return;
-    }
-    add({
-      slug: product.handle,
-      name: product.title,
-      price: product.price,
-      image: product.image?.url ?? PLACEHOLDER_IMAGE,
-      // Quick-add picks the middle size as a default; PDP lets you choose.
-      size: hasSizes ? product.sizes[Math.floor(product.sizes.length / 2)] : null,
-    });
-  };
 
   // One tab stop per card: the title link stretches over the whole card with a
   // pseudo-element, so the image is not a second link and the quick-add button
@@ -78,17 +62,7 @@ export function ProductCard({
         )}
 
         {/* Quick add — appears on hover (desktop), always tappable on touch */}
-        {canQuickAdd && (
-          <button
-            type="button"
-            onClick={quickAdd}
-            aria-label={`Quick add ${product.title} to bag`}
-            className="absolute bottom-3 right-3 z-10 flex h-10 items-center gap-1.5 rounded-full bg-paper pl-3 pr-3 text-sm font-semibold text-ink shadow-md transition-all duration-200 hover:bg-ink hover:text-paper focus-visible:translate-y-0 focus-visible:opacity-100 sm:translate-y-2 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100"
-          >
-            <PlusIcon width={16} height={16} aria-hidden="true" />
-            <span className="hidden sm:inline">Add</span>
-          </button>
-        )}
+        {canQuickAdd && <QuickAddButton product={product} />}
       </div>
 
       <div className="mt-3">

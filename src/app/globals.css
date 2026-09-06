@@ -128,6 +128,18 @@
   }
 }
 
+/*
+ * Sticky-header separator: a border while the page is at the top, a shadow once
+ * it has scrolled, so the 1px never changes the header's box. `data-scrolled`
+ * is set on <html> by HeaderScrollShadow, which is what lets the header markup
+ * itself stay a server component (see src/components/layout/Header.tsx).
+ * Unlayered on purpose: it has to win over the `border-line` utility.
+ */
+:root[data-scrolled] [data-site-header] {
+  border-bottom-color: transparent;
+  box-shadow: 0 1px 0 0 var(--color-line);
+}
+
 /* Horizontally scrollable strip with the scrollbar hidden (still scrollable/draggable). */
 .hide-scrollbar {
   scrollbar-width: none;

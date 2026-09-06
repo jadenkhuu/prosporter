@@ -3,6 +3,7 @@ import { Archivo, Inter } from "next/font/google";
 import "./globals.css";
 import { Analytics } from "@/components/analytics/Analytics";
 import { CartProvider } from "@/components/cart/CartProvider";
+import { CartDrawerMount } from "@/components/cart/CartDrawerMount";
 import { isShopifyConfigured } from "@/lib/shopify";
 import { AnnouncementBar } from "@/components/layout/AnnouncementBar";
 import { Header } from "@/components/layout/Header";
@@ -94,6 +95,9 @@ export default function RootLayout({
             {children}
           </main>
           <Footer />
+          {/* Body-level sibling of the header, main and footer, so the open
+              drawer can inert all three. Lazily chunked — see CartDrawerMount. */}
+          <CartDrawerMount />
         </CartProvider>
       </body>
     </html>

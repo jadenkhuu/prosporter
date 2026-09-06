@@ -10,7 +10,7 @@ import {
 import { formatPrice, formatPriceRange, swatchFor } from "@/lib/format";
 import { useCart } from "@/components/cart/CartProvider";
 import { track, viewItemParams } from "@/lib/analytics";
-import { PLACEHOLDER_IMAGE } from "@/components/product/ProductCard";
+import { PLACEHOLDER_IMAGE } from "@/components/product/placeholder";
 import { CheckIcon, ChevronDown } from "@/components/icons";
 
 /** Disclosure: button and panel wired together with aria-expanded/controls. */
