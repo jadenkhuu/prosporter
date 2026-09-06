@@ -1,7 +1,18 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Page not found · ProSporter" };
+/**
+ * The 404 route used to inherit the home page's description verbatim, which put
+ * the same sentence on every dead URL (QA defect D8). It gets its own copy and
+ * an explicit `noindex` — a not-found page is never a search result, and the
+ * route is reachable at any path, so there is no one canonical URL to declare.
+ */
+export const metadata: Metadata = {
+  title: "Page not found · ProSporter",
+  description:
+    "This ProSporter page could not be found. Browse the shop or head back to the home page.",
+  robots: { index: false, follow: true },
+};
 
 export default function NotFound() {
   return (

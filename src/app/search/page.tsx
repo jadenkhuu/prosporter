@@ -34,6 +34,10 @@ export async function generateMetadata({
   return {
     title: q ? `Search: ${q} · ProSporter` : "Search · ProSporter",
     description: "Search the ProSporter range of indoor and beach volleyball gear.",
+    // Self canonical on the query, not on bare /search: the sort permutations of
+    // one query are the duplicates worth collapsing, and pointing `?q=shorts` at
+    // `/search` would canonicalise to a page with different content (QA D8).
+    alternates: { canonical: q ? `/search?q=${encodeURIComponent(q)}` : "/search" },
     robots: { index: false, follow: true },
   };
 }

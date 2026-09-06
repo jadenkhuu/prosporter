@@ -52,15 +52,36 @@ function Accordion({ title, children }: { title: string; children: React.ReactNo
   );
 }
 
+/**
+ * Pre-selects the options of the one purchasable variant, when there is exactly
+ * one (QA defect D9). Anything ambiguous — no options, several variants in
+ * stock, or a variant that does not name every option — starts unselected, so
+ * the shopper still makes the choice the product actually offers.
+ */
+function defaultSelection(product: CatalogProductDetail): Record<string, string> {
+  if (product.options.length === 0) return {};
+  const purchasable = product.variants.filter((v) => v.available);
+  if (purchasable.length !== 1) return {};
+  const only = purchasable[0];
+  const selection: Record<string, string> = {};
+  for (const option of product.options) {
+    const chosen = only.selectedOptions.find((o) => o.name === option.name);
+    if (!chosen) return {};
+    selection[option.name] = chosen.value;
+  }
+  return selection;
+}
+
 export function ProductDetail({ product }: { product: CatalogProductDetail }) {
   const { add, addVariant, isPending } = useCart();
-  const [selection, setSelection] = useState<Record<string, string>>({});
+  const [selection, setSelection] = useState<Record<string, string>>(() =>
+    defaultSelection(product),
+  );
   // Null until the shopper picks a thumbnail; a variant image wins until then.
   const [pickedImage, setPickedImage] = useState<number | null>(null);
   const [added, setAdded] = useState(false);
-  const [error, setError] = useState(false);
   const uid = useId();
-  const errorId = `pdp-error-${uid}`;
+  const hintId = `pdp-hint-${uid}`;
 
   /**
    * GA4 view_item (CLNT-179): once per product, not once per variant click.
@@ -93,6 +114,18 @@ export function ProductDetail({ product }: { product: CatalogProductDetail }) {
   const inStock = variant ? variant.available : product.inStock;
   const sizeOption = product.options.find((o) => isSizeOption(o.name));
 
+  /**
+   * "Add to bag" stays disabled until a purchasable variant is on the table
+   * (QA defect D9). Before, the button was live and a click did nothing except
+   * push a message into the live region; now the button label carries the same
+   * instruction where a sighted shopper reads it, and the live region below
+   * still announces the variant once the choice is complete.
+   */
+  const optionNames = product.options.map((o) => o.name.toLowerCase());
+  const chooseHint = `Choose ${optionNames.join(" and ")}`;
+  const awaitingSelection = needsSelection && !complete;
+  const canAdd = inStock && !awaitingSelection;
+
   /** Does any purchasable variant carry this option value? */
   const valueAvailable = (optionName: string, value: string) => {
     if (product.variants.length === 0) return true;
@@ -106,14 +139,12 @@ export function ProductDetail({ product }: { product: CatalogProductDetail }) {
   const choose = (option: string, value: string) => {
     setSelection((s) => ({ ...s, [option]: value }));
     setPickedImage(null);
-    setError(false);
   };
 
   const handleAdd = () => {
-    if (needsSelection && !complete) {
-      setError(true);
-      return;
-    }
+    // Belt and braces: the button is disabled in this state, so this only
+    // guards a programmatic click.
+    if (!canAdd) return;
     const variantId = variant?.id ?? product.variantId;
     if (variantId) {
       addVariant(variantId);
@@ -143,8 +174,12 @@ export function ProductDetail({ product }: { product: CatalogProductDetail }) {
 
   return (
     <div className="grid gap-8 lg:grid-cols-2 lg:gap-14">
-      {/* Gallery */}
-      <div>
+      {/* Gallery.
+          `min-w-0` is load-bearing: a grid item's automatic minimum size is its
+          min-content width, and the thumbnail strip below is a nowrap flex row
+          of 80 px tiles, so without it a product with several images widens the
+          whole document instead of scrolling inside the strip (QA defect D1). */}
+      <div className="min-w-0">
         <div className="relative aspect-[4/5] overflow-hidden rounded-card bg-surface">
           <Image
             src={hero?.url ?? PLACEHOLDER_IMAGE}
@@ -164,7 +199,7 @@ export function ProductDetail({ product }: { product: CatalogProductDetail }) {
         {images.length > 1 && (
           <ul
             aria-label={`${product.title} images`}
-            className="mt-3 flex gap-3 overflow-x-auto pb-1"
+            className="mt-3 flex w-full max-w-full gap-3 overflow-x-auto pb-1"
           >
             {images.map((img, i) => {
               const current = hero?.url === img.url;
@@ -319,10 +354,9 @@ export function ProductDetail({ product }: { product: CatalogProductDetail }) {
             </fieldset>
           );
         })}
-        {error && (
-          <p id={errorId} role="alert" className="mt-2 text-xs font-medium text-[#c0392b]">
-            Please choose {product.options.map((o) => o.name.toLowerCase()).join(" and ")} before
-            adding to bag.
+        {awaitingSelection && (
+          <p id={hintId} className="mt-3 text-xs font-medium text-muted">
+            {chooseHint} to add this to your bag.
           </p>
         )}
 
@@ -330,12 +364,12 @@ export function ProductDetail({ product }: { product: CatalogProductDetail }) {
         <button
           type="button"
           onClick={handleAdd}
-          disabled={!inStock || isPending}
-          aria-disabled={!inStock || isPending}
+          disabled={!canAdd || isPending}
+          aria-disabled={!canAdd || isPending}
           aria-busy={isPending}
-          aria-describedby={error ? errorId : undefined}
+          aria-describedby={awaitingSelection ? hintId : undefined}
           className={`mt-7 flex w-full items-center justify-center gap-2 rounded-full px-6 py-4 text-sm font-semibold transition-colors ${
-            !inStock
+            !canAdd
               ? "cursor-not-allowed bg-surface-2 text-subtle"
               : added
                 ? "bg-green-deep text-paper"
@@ -344,6 +378,8 @@ export function ProductDetail({ product }: { product: CatalogProductDetail }) {
         >
           {!inStock ? (
             "Sold out"
+          ) : awaitingSelection ? (
+            chooseHint
           ) : isPending ? (
             "Adding…"
           ) : added ? (

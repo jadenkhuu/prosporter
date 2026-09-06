@@ -4,6 +4,7 @@ import "./globals.css";
 import { Analytics } from "@/components/analytics/Analytics";
 import { CartProvider } from "@/components/cart/CartProvider";
 import { isShopifyConfigured } from "@/lib/shopify";
+import { AnnouncementBar } from "@/components/layout/AnnouncementBar";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { JsonLd } from "@/components/seo/JsonLd";
@@ -11,16 +12,26 @@ import { buildOrganizationJsonLd, buildWebSiteJsonLd } from "@/lib/seo/json-ld";
 import { OG_DEFAULTS } from "@/lib/seo/metadata";
 import { SITE_DESCRIPTION, siteUrl } from "@/lib/site";
 
+/**
+ * Only `.display` uses Archivo, and only at weight 800 (upright on every page,
+ * italic on the home hero). Declaring the four-weight range pulled the whole
+ * variable face down on every route — ~48 KB of it for the italic alone — which
+ * is render-critical weight the LCP text paint waits behind (QA defect D3).
+ * `display: "swap"` is next/font's default; it is spelled out here because the
+ * LCP element on a product page *is* text.
+ */
 const archivo = Archivo({
   variable: "--font-archivo",
   subsets: ["latin"],
-  weight: ["600", "700", "800", "900"],
+  weight: ["800"],
   style: ["normal", "italic"],
+  display: "swap",
 });
 
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
+  display: "swap",
 });
 
 /**
@@ -74,6 +85,7 @@ export default function RootLayout({
             cutover. See docs/deployment.md § Analytics. */}
         <Analytics />
         <CartProvider enabled={cartEnabled}>
+          <AnnouncementBar />
           <Header />
           {/* tabIndex={-1} so the skip link can move real focus here, not just
               the scroll position; scroll-margin keeps it clear of the sticky

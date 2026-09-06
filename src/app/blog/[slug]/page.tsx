@@ -44,7 +44,9 @@ export async function generateMetadata({
       title: article.seoTitle || article.title,
       description,
       publishedTime: article.publishedAt ?? undefined,
-      images: article.image ? [{ url: article.image.url }] : undefined,
+      // An article shares with its featured image; without one it falls
+      // through to the site default in OG_DEFAULTS.
+      ...(article.image ? { images: [{ url: article.image.url }] } : {}),
     },
   };
 }

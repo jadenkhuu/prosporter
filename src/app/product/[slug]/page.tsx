@@ -34,7 +34,9 @@ export async function generateMetadata({
       url: `/product/${product.handle}`,
       title: product.seo.title || product.title,
       description,
-      images: product.image ? [{ url: product.image.url }] : undefined,
+      // Falls through to OG_DEFAULTS.images for the products still
+      // waiting on a photo from the migration.
+      ...(product.image ? { images: [{ url: product.image.url }] } : {}),
     },
   };
 }
@@ -95,7 +97,10 @@ export default async function ProductPage({
         <span className="line-clamp-1 text-ink">{product.title}</span>
       </nav>
 
-      <ProductDetail product={product} />
+      {/* Keyed on the handle so a client-side navigation to another product
+          remounts the detail view: option state (including the default
+          selection for a one-variant product) must not leak between products. */}
+      <ProductDetail key={product.handle} product={product} />
 
       {related.length > 0 && (
         <section className="mt-20">

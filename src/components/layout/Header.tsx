@@ -57,15 +57,8 @@ export function Header() {
 
   return (
     <>
-      {/* Announcement bar */}
-      <div className="bg-ink text-paper">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-center px-4 py-2 text-center">
-          <span className="eyebrow text-[10px] text-surface-2">
-            EXAMPLE PROMOTIONAL TEXT || Free shipping on orders over $150 · Australia-wide
-          </span>
-        </div>
-      </div>
-
+      {/* The announcement bar lives in the root layout (AnnouncementBar.tsx):
+          it is static server-rendered text and the LCP element on a PDP. */}
       <header
         className={`sticky top-0 z-50 bg-paper/95 backdrop-blur transition-shadow ${
           scrolled ? "shadow-[0_1px_0_0_var(--color-line)]" : "border-b border-line"
