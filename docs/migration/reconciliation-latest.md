@@ -5,15 +5,15 @@ customers appear as counts, never as names or addresses.
 
 | Field | Value |
 |---|---|
-| Run id | `live-full-1` |
-| Generated | 2026-09-05T07:39:25+00:00 |
+| Run id | `delta-20260906` |
+| Generated | 2026-09-06T04:59:38+00:00 |
 | Source snapshot | 2026-09-05T04:13:43.213180+00:00 |
 | Source directory | `exports` |
 | Target | `shopify` |
 | Shopify API version | `2026-07` |
-| Pipeline commit | `0fef61b13f81a5ab75919ee66e8e57c8061d7f41` |
+| Pipeline commit | `1924cac565babc91740f543ae32f6cdb1878a97c` |
 
-**20 matched, 17 explained, 0 unexplained** out of 37 checks.
+**22 matched, 21 explained, 1 unexplained** out of 44 checks.
 
 ## Reconciliation checks
 
@@ -23,10 +23,10 @@ customers appear as counts, never as names or addresses.
 | product_count_source_publish | 141 | 135 | 6 | explained | products held for a client decision are not loaded |
 | product_count_source_draft | 20 | 19 | 1 | explained | products held for a client decision are not loaded |
 | product_count_target_draft_status | 154 | 154 | 0 | match | dry runs keep every product in draft |
-| variant_count_total | 923 | 782 | 141 | explained | simple products contribute one default variant; held variants are excluded |
-| variant_count_products_with_a_difference | 0 | 31 | 0 | explained | each difference is a held product or held variant with a named exception |
+| variant_count_total | 923 | 779 | 144 | explained | simple products contribute one default variant; held variants are excluded |
+| variant_count_products_with_a_difference | 0 | 32 | 0 | explained | each difference is a held product or held variant with a named exception |
 | sku_null_count_source | 219 | 0 | 0 | explained | blank SKUs are filled deterministically as PS-<product>-<variation> |
-| sku_unique_count | 782 | 753 | 0 | explained | duplicate source SKUs are reported, never silently rewritten |
+| sku_unique_count | 779 | 750 | 0 | explained | duplicate source SKUs are reported, never silently rewritten |
 | sku_generated_count | 219 | 171 | 0 | explained | generated SKUs on held variants are not loaded |
 | image_count_total | 445 | 469 | 0 | explained | variant-specific images are added on top of the product gallery; held products contribute none |
 | products_without_image | 44 | 40 | 0 | explained | counted on the loaded subset |
@@ -41,11 +41,18 @@ customers appear as counts, never as names or addresses.
 | variant_currency_field_mismatches | 0 | 0 | 0 | match |  |
 | variants_without_regular_price_in_source | 56 | 11 | 0 | explained | 45 inherit the parent product price; 11 have no price anywhere and are held pending client-supplied prices |
 | held_variants_missing_option_value | 0 | 62 | 0 | explained | WooCommerce 'Any <option>' variations have no Shopify equivalent |
-| held_variants_total | 0 | 141 | 0 | explained | held variants = missing price + missing option value + variants of held products |
-| inventory_item_count | 782 | 782 | 0 | match |  |
+| held_variants_total | 0 | 144 | 0 | explained | held variants = missing price + missing option value + variants of held products |
+| inventory_item_count | 779 | 782 | 0 | mismatch |  |
 | inventory_staged_quantity_total | 6514 | 6444 | 0 | explained | held variants carry their stock out of the total |
 | page_count | 30 | 22 | 0 | explained | WooCommerce functional pages (cart/checkout/account) are storefront routes |
 | article_count | 15 | 15 | 0 | match |  |
+| body_image_references_in_source | 579 | 523 | 56 | explained | 56 reference(s) sit in held pages the storefront owns and are never loaded |
+| body_image_unique_files | 46 | 46 | 0 | match |  |
+| body_image_files_uploaded | 46 | 46 | 0 | match |  |
+| body_image_unresolvable_sources | 0 | 7 | 0 | explained | resized variant with no original in media.json; uploaded by URL and reported as body_image_not_in_media_export |
+| body_image_references_rewritten | 523 | 521 | 0 | explained | unrewritten references are unresolvable or unreachable sources |
+| page_article_bodies_with_a_rewrite | 13 | 13 | 0 | match |  |
+| wordpress_image_references_left_in_loaded_bodies | 0 | 2 | 0 | explained | each one is a named body_image exception; every other reference now points at cdn.shopify.com |
 | product_seo_title_populated | 154 | 154 | 0 | match |  |
 | product_seo_description_populated | 65 | 100 | 0 | explained | Yoast meta description is absent on most products; the Open Graph description is used as a fallback |
 | customer_count | 178 | 178 | 0 | match | 4 administrator accounts excluded by role; failed records are in the exception register |
@@ -62,8 +69,8 @@ customers appear as counts, never as names or addresses.
 | Severity | Count |
 |---|---:|
 | critical | 8 |
-| high | 389 |
-| medium | 66 |
+| high | 318 |
+| medium | 73 |
 | low | 1505 |
 
 ## Exceptions by code
@@ -73,20 +80,22 @@ customers appear as counts, never as names or addresses.
 | variant_missing_weight | 726 |
 | media_missing_alt | 350 |
 | sku_generated | 219 |
-| record_held_from_load | 190 |
-| load_failed | 118 |
+| record_held_from_load | 193 |
 | customer_without_address | 95 |
 | variant_missing_option_value | 62 |
 | seo_description_missing | 55 |
 | single_value_option_dropped | 52 |
 | product_without_image | 44 |
+| duplicate_option_combination | 41 |
 | variant_missing_price | 11 |
 | attribute_needs_decision | 8 |
 | page_is_storefront_route | 8 |
+| body_image_not_in_media_export | 7 |
 | duplicate_sku | 6 |
 | page_duplicate_suffix | 6 |
 | advanced_coupon_rules | 4 |
 | negative_inventory | 4 |
+| load_failed | 3 |
 | attribute_demoted_to_tag | 2 |
 | duplicate_handle | 2 |
 | product_type_fallback | 2 |
@@ -97,7 +106,7 @@ customers appear as counts, never as names or addresses.
 ## Records held out of the load
 
 - Products held: 7 (hoodie-pants-winter-2024, inner-west-jersey, modena-jersey, modena-volley-jersey, modena-volley-shorts, provolley-jersey, provolley-womens-jersey)
-- Variants held: 141
+- Variants held: 144
 
 Reasons: attribute_needs_decision (8), bundle_product (1)
 
@@ -108,8 +117,11 @@ Reasons: attribute_needs_decision (8), bundle_product (1)
 | Article | 15 |
 | Collection | 10 |
 | CollectionMembership | 10 |
+| Customer | 176 |
+| DiscountCodeNode | 5 |
+| File | 46 |
 | InventoryItem | 782 |
-| MediaImage | 352 |
+| MediaImage | 469 |
 | Metafield | 394 |
 | MetafieldDefinition | 6 |
 | Page | 21 |
