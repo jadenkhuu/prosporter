@@ -13,7 +13,14 @@ visible as a chain. Each row is graded on the *whole* journey:
   ``301``        one redirect hop straight to the mapped destination.
   ``same_url``   one redirect hop (the trailing-slash canonicalization) to a 200.
   ``410``        zero redirect hops; the legacy URL answers 410 itself.
+  ``held_redirect_to_collection``  graded exactly like ``301``: one hop to the
+                 held product's primary collection.
   ``client_decision`` / query-only sources are skipped and counted.
+
+One check needs no server: every ``same_url`` product row is reconciled against
+the migration load ledger (``exports/migration/<store>/store.json``). A row that
+promises a 200 for a handle that was never loaded is a failure - that is QA
+defect D4. Run it on its own with ``--ledger-only``.
 
 The slash-free canonical form of every row is checked too, since that is what
 ``next.config.ts`` ``redirects()`` and the proxy see after normalization.
@@ -45,6 +52,17 @@ GONE_JSON = os.path.join(ROOT, "docs", "redirects", "gone.json")
 REPORT = os.path.join(ROOT, "docs", "redirects", "verification-report.md")
 MOCK_CATALOG = os.path.join(ROOT, "mock-data", "catalog.json")
 
+# Migration load ledgers, most authoritative first. Only product handles are read
+# from them; they hold no customer data.
+LEDGER_CANDIDATES = (
+    os.path.join(ROOT, "exports", "migration", "live-store", "store.json"),
+    os.path.join(ROOT, "exports", "migration", "fake-store", "store.json"),
+)
+
+HELD_OUTCOME = "held_redirect_to_collection"
+# Outcomes that must answer with a permanent redirect to `destination`.
+REDIRECT_OUTCOMES = ("301", HELD_OUTCOME)
+
 MAX_HOPS = 5
 
 # Routes the approved IA calls for but the prototype has not built yet. `/blog`
@@ -59,6 +77,50 @@ UNBUILT_PREFIXES = (
     "/refund-policy",
     "/terms-of-service",
 )
+
+
+def load_ledger_handles(explicit: str | None = None):
+    """Product handles in the migration load ledger, or (None, None).
+
+    The ledger is the record of what was actually created on Shopify. A
+    `same_url` row promises a 200 on `/product/<handle>`, which can only be true
+    if that handle is in the ledger.
+    """
+    candidates = (explicit,) if explicit else LEDGER_CANDIDATES
+    for path in candidates:
+        if not path or not os.path.exists(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as fh:
+                store = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        products = (store.get("objects") or {}).get("Product")
+        if isinstance(products, dict):
+            return set(products), os.path.relpath(path, ROOT)
+    return None, None
+
+
+def check_same_url_against_ledger(rows, loaded):
+    """Every `same_url` product row whose handle was never loaded.
+
+    Returns a list of (source_path, handle). An empty list means the map and the
+    ledger agree; anything in it is a row that promises a 200 for a product that
+    does not exist on the store (QA defect D4).
+    """
+    if loaded is None:
+        return []
+    unloaded = []
+    for row in rows:
+        if row["outcome"] != "same_url":
+            continue
+        if not row["source_path"].startswith("/product/"):
+            continue
+        handle = row["source_path"].rsplit("/", 1)[-1]
+        if handle not in loaded:
+            unloaded.append((row["source_path"], handle))
+    unloaded.sort()
+    return unloaded
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -119,11 +181,41 @@ def main() -> int:
     parser.add_argument("--base-url", default="http://localhost:3114")
     parser.add_argument("--map", default=MAP_CSV)
     parser.add_argument("--report", default=REPORT)
+    parser.add_argument(
+        "--ledger",
+        default=None,
+        help="migration load ledger store.json (default: live-store, then fake-store)",
+    )
+    parser.add_argument(
+        "--ledger-only",
+        action="store_true",
+        help="run only the offline map-vs-ledger reconciliation; no server needed, "
+        "nothing is written",
+    )
     args = parser.parse_args()
     base = args.base_url.rstrip("/")
 
     with open(args.map, newline="", encoding="utf-8") as fh:
         rows = list(csv.DictReader(fh))
+
+    # Offline: does every `same_url` row name a product that was really loaded?
+    loaded_handles, ledger_path = load_ledger_handles(args.ledger)
+    unloaded_same_url = check_same_url_against_ledger(rows, loaded_handles)
+
+    if args.ledger_only:
+        if loaded_handles is None:
+            print("ledger: none found; same_url rows could not be reconciled")
+            return 0
+        print(f"ledger: {ledger_path} ({len(loaded_handles)} product handles)")
+        print(
+            f"same_url product rows: "
+            f"{sum(1 for r in rows if r['outcome'] == 'same_url' and r['source_path'].startswith('/product/'))}"
+        )
+        print(f"same_url rows not in the ledger: {len(unloaded_same_url)}")
+        for source, handle in unloaded_same_url:
+            print(f"  UNLOADED {source} (handle `{handle}`)", file=sys.stderr)
+        return 1 if unloaded_same_url else 0
+
     with open(GONE_JSON, encoding="utf-8") as fh:
         gone_paths = json.load(fh)
 
@@ -205,7 +297,7 @@ def main() -> int:
 
         final_path = chain[-1][0]
 
-        if outcome == "301":
+        if outcome in REDIRECT_OUTCOMES:
             expected_hops = 1
             if final_path.split("?")[0] != dest:
                 entry["result"] = "wrong_destination"
@@ -265,7 +357,7 @@ def main() -> int:
             continue
         status, location = fetch(base + source)
         got = to_path(location, base)
-        if outcome == "301" and status in (301, 308) and got == row["destination"]:
+        if outcome in REDIRECT_OUTCOMES and status in (301, 308) and got == row["destination"]:
             canonical_ok += 1
         elif outcome == "same_url" and status in (200, 404):
             canonical_ok += 1
@@ -288,10 +380,10 @@ def main() -> int:
     by_source = {r["source_path"]: r for r in rows}
     map_problems = []
     for row in rows:
-        if row["outcome"] != "301":
+        if row["outcome"] not in REDIRECT_OUTCOMES:
             continue
         target = by_source.get(row["destination"])
-        if target is not None and target["outcome"] == "301":
+        if target is not None and target["outcome"] in REDIRECT_OUTCOMES:
             map_problems.append(
                 f"chain: {row['source_path']} -> {row['destination']} -> {target['destination']}"
             )
@@ -359,6 +451,50 @@ def main() -> int:
     a("Served by `src/proxy.ts`, which returns a real 410 with a small HTML body,")
     a("`Cache-Control: public, max-age=3600, must-revalidate` and `X-Robots-Tag: noindex`.")
     a("The one 410 row not in `gone.json` is `/?s=`, a query-only URL no path rule can match.")
+    a("")
+    a("### `same_url` rows vs the migration load ledger")
+    a("")
+    a("A `same_url` row promises a 200 on `/product/<handle>`, which is only true if")
+    a("the migration actually loaded that handle. This check is offline: it reads the")
+    a("load ledger, not the server, so it catches a held product before the crawl does")
+    a("(QA defect D4). Run it on its own with `--ledger-only`.")
+    a("")
+    if loaded_handles is None:
+        a("- Ledger: **not available on this machine**; `same_url` rows were not reconciled.")
+    else:
+        same_url_products = sum(
+            1
+            for r in rows
+            if r["outcome"] == "same_url" and r["source_path"].startswith("/product/")
+        )
+        a(f"- Ledger: `{ledger_path}` ({len(loaded_handles)} product handles)")
+        a(f"- `same_url` product rows checked: **{same_url_products}**")
+        a(f"- Rows whose handle is **not** in the ledger: **{len(unloaded_same_url)}**")
+        if unloaded_same_url:
+            a("")
+            a("These rows claim a 200 for a product that is not on the store. Rebuild the")
+            a("map (`python3 scripts/redirects/build_redirect_map.py`) so each one is")
+            a("re-graded, or load the product.")
+            a("")
+            a("| Source | Handle |")
+            a("|---|---|")
+            for source, handle in unloaded_same_url:
+                a(f"| `{source}` | `{handle}` |")
+    a("")
+    held_rows = [r for r in rows if r["outcome"] == HELD_OUTCOME]
+    a("### Held products")
+    a("")
+    if held_rows:
+        a(f"{len(held_rows)} legacy product path(s) are graded `{HELD_OUTCOME}`: the product")
+        a("is held from the Shopify load, so the path 308s to its primary collection instead")
+        a("of promising a 200. Rebuild the map after any held product is loaded.")
+        a("")
+        a("| Source | Destination |")
+        a("|---|---|")
+        for r in held_rows:
+            a(f"| `{r['source_path']}` | `{r['destination']}` |")
+    else:
+        a("None.")
     a("")
     a(f"Static map check (loops and chains): {'**' + str(len(map_problems)) + ' problem(s)**' if map_problems else 'clean'}")
     if map_problems:
@@ -456,11 +592,16 @@ def main() -> int:
         f"fail={counts.get('fail', 0)}"
     )
     print(f"canonical_ok={canonical_ok} canonical_bad={len(canonical_bad)} gone_410={gone_ok}/{len(gone_paths)}")
+    print(
+        f"ledger={ledger_path or 'none'} same_url_not_loaded={len(unloaded_same_url)}"
+    )
+    for source, handle in unloaded_same_url:
+        print(f"LEDGER: same_url row {source} names unloaded handle `{handle}`", file=sys.stderr)
     print(f"report: {args.report}")
     if map_problems:
         for p in map_problems:
             print("MAP: " + p, file=sys.stderr)
-    return 1 if failures or wrong or map_problems or gone_bad else 0
+    return 1 if failures or wrong or map_problems or gone_bad or unloaded_same_url else 0
 
 
 if __name__ == "__main__":

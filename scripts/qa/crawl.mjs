@@ -340,7 +340,7 @@ async function main() {
     return out;
   }
 
-  const redirectRows = lines.slice(1).map(splitCsv).filter((c) => c[iOutcome] === "301");
+  const redirectRows = lines.slice(1).map(splitCsv).filter((c) => c[iOutcome] === "301" || c[iOutcome] === "held_redirect_to_collection");
   const gone = JSON.parse(await readFile(path.join(REPO, "docs", "redirects", "gone.json"), "utf8"));
 
   const redirectChecks = [];

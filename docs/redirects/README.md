@@ -17,10 +17,11 @@ contains no customer, order or account data.
 
 | Outcome | Count | Meaning |
 |---|---:|---|
-| `same_url` | 149 | Path preserved 1:1 in Next.js, must return 200 |
+| `same_url` | 143 | Path preserved 1:1 in Next.js, must return 200 |
 | `301` | 137 | Permanent redirect to a direct equivalent |
 | `410` | 49 | Intentional retirement |
 | `client_decision` | 35 | Ambiguous, blocked on the client |
+| `held_redirect_to_collection` | 6 | Product held from the Shopify load; interim permanent redirect to its primary collection |
 
 > `outcome = 301` means *permanent redirect*. Next.js `permanent: true` emits **308**
 > (it preserves the request method); the `status_code` column records 308 for
@@ -28,23 +29,77 @@ contains no customer, order or account data.
 
 ## Counts by source type
 
-| Source type | Total | same_url | 301 | 410 | client_decision |
-|---|---:|---:|---:|---:|---:|
-| `author_archive` | 1 | 0 | 0 | 1 | 0 |
-| `feed` | 20 | 0 | 0 | 20 | 0 |
-| `internal_link` | 1 | 0 | 1 | 0 | 0 |
-| `page` | 30 | 9 | 4 | 13 | 4 |
-| `post` | 15 | 0 | 14 | 0 | 1 |
-| `post_category` | 7 | 0 | 7 | 0 | 0 |
-| `post_tag` | 9 | 0 | 9 | 0 | 0 |
-| `product` | 161 | 139 | 0 | 0 | 22 |
-| `product_brand` | 1 | 0 | 0 | 0 | 1 |
-| `product_category` | 30 | 0 | 29 | 0 | 1 |
-| `product_tag` | 75 | 0 | 64 | 5 | 6 |
-| `search` | 1 | 0 | 0 | 1 | 0 |
-| `theme_taxonomy` | 1 | 0 | 0 | 1 | 0 |
-| `woo_system` | 9 | 1 | 0 | 8 | 0 |
-| `yoast_redirect` | 9 | 0 | 9 | 0 | 0 |
+| Source type | Total | same_url | 301 | 410 | client_decision | held |
+|---|---:|---:|---:|---:|---:|---:|
+| `author_archive` | 1 | 0 | 0 | 1 | 0 | 0 |
+| `feed` | 20 | 0 | 0 | 20 | 0 | 0 |
+| `internal_link` | 1 | 0 | 1 | 0 | 0 | 0 |
+| `page` | 30 | 9 | 4 | 13 | 4 | 0 |
+| `post` | 15 | 0 | 14 | 0 | 1 | 0 |
+| `post_category` | 7 | 0 | 7 | 0 | 0 | 0 |
+| `post_tag` | 9 | 0 | 9 | 0 | 0 | 0 |
+| `product` | 161 | 133 | 0 | 0 | 22 | 6 |
+| `product_brand` | 1 | 0 | 0 | 0 | 1 | 0 |
+| `product_category` | 30 | 0 | 29 | 0 | 1 | 0 |
+| `product_tag` | 75 | 0 | 64 | 5 | 6 | 0 |
+| `search` | 1 | 0 | 0 | 1 | 0 | 0 |
+| `theme_taxonomy` | 1 | 0 | 0 | 1 | 0 | 0 |
+| `woo_system` | 9 | 1 | 0 | 8 | 0 | 0 |
+| `yoast_redirect` | 9 | 0 | 9 | 0 | 0 | 0 |
+
+## Held products (not loaded to Shopify yet)
+
+A legacy `/product/<slug>` path may only be graded `same_url` if the product is
+really on the storefront. The migration holds a record back from the load while it
+carries an unresolved blocking exception, and a held product has no Shopify product
+and therefore no product page - so `same_url` would promise a 200 that is actually a
+404. That was QA defect **D4**: six indexed legacy product URLs recorded as
+`same_url, 200` returned 404 on the deployed storefront.
+
+### The rule
+
+On every run the builder reconciles each `same_url` product row against two
+signals. A product is **held** when either is true:
+
+1. `docs/migration/exception-register.csv` has an unresolved row for it whose code
+   is `record_held_from_load` or whose severity is `critical`.
+2. A migration load ledger is available and the handle is not in it (`exports/migration/live-store/store.json`).
+
+A held row becomes:
+
+- `outcome = held_redirect_to_collection`, `status_code = 308`, `owner = nextjs`
+- `destination` = the product's **primary collection**, so the link keeps its
+  equity and the customer lands on the nearest genuine listing rather than a 404
+- `needs_client_decision = true`, and the `reason` and `evidence` columns name the
+  exception that holds it (`<code>:product:<woo id>`)
+
+The redirect is **interim**. Both signals are re-read on every run, so once the
+client unblocks the product and it loads, the next rebuild puts the row back to
+`same_url` on its own - nothing is hand edited. **Rebuild this map after any held
+product is loaded**, otherwise the 308 will keep shadowing the new product page.
+
+Primary collection is taken from the same IA assignment the migration transform
+uses (`scripts/migration/normalize.py`: `assign_clubs`, `assign_product_type`,
+`assign_surface`), with precedence **club > product type from a real category >
+surface > inferred type > `/shop`**. The club collection is the most specific
+listing a customer can be sent to; `beach`/`indoor` are the broadest axis, so they
+only win when the type had to be guessed from the product name.
+
+### Held rows in this map
+
+| Legacy path | Destination | Held by |
+|---|---|---|
+| `/product/inner-west-jersey` | `/shop/clubs/inner-west-volley` | `attribute_needs_decision:product:6763` |
+| `/product/modena-jersey` | `/shop/jerseys` | `attribute_needs_decision:product:6748` |
+| `/product/modena-volley-jersey` | `/shop/clubs/teamwear` | `attribute_needs_decision:product:3154` |
+| `/product/modena-volley-shorts` | `/shop/clubs/teamwear` | `attribute_needs_decision:product:3173` |
+| `/product/provolley-jersey` | `/shop/clubs/provolley-academy` | `attribute_needs_decision:product:6718` |
+| `/product/provolley-womens-jersey` | `/shop/clubs/provolley-academy` | `attribute_needs_decision:product:6758` |
+
+Held products whose legacy path was already `client_decision` (a draft or a
+duplicate handle) keep that outcome: they have no public legacy URL to preserve, so
+there is nothing to redirect. `hoodie-pants-winter-2024` (an Easy Product Bundles
+record with no Shopify equivalent) is the one such row today.
 
 ## Source inventory
 
@@ -307,7 +362,7 @@ from the sitemap.
 | `/product-tag/sette` | `product_tag` | brand tag; the approved IA has no brand collection - client to decide a Shopify vendor collection or retirement |
 | `/product-tag/varone` | `product_tag` | brand tag; the approved IA has no brand collection - client to decide a Shopify vendor collection or retirement |
 
-A further 38 URLs have a working destination but are flagged for
+A further 44 URLs have a working destination but are flagged for
 confirmation (they are live in `redirects.json` today):
 
 | Source | Destination | Reason |
@@ -320,6 +375,12 @@ confirmation (they are live in `redirects.json` today):
 | `/latest-make-up-trends` | `/blog/latest-make-up-trends` | post handle preserved under the /blog prefix; theme demo content unrelated to ProSporter - recommend retirement, client to confirm |
 | `/led-light-therapy` | `/blog/led-light-therapy` | post handle preserved under the /blog prefix; theme demo content unrelated to ProSporter - recommend retirement, client to confirm |
 | `/superfood-beauty` | `/blog/superfood-beauty` | post handle preserved under the /blog prefix; theme demo content unrelated to ProSporter - recommend retirement, client to confirm |
+| `/product/inner-west-jersey` | `/shop/clubs/inner-west-volley` | product is held from the Shopify load, so /product/<slug> has no page; interim permanent redirect to its primary collection (club axis: inner-west-volley); held by exception attribute_needs_decision:product:6763; the row returns to same_url once the product is loaded and this map is rebuilt |
+| `/product/modena-jersey` | `/shop/jerseys` | product is held from the Shopify load, so /product/<slug> has no page; interim permanent redirect to its primary collection (type axis: jerseys (from category)); held by exception attribute_needs_decision:product:6748; the row returns to same_url once the product is loaded and this map is rebuilt |
+| `/product/modena-volley-jersey` | `/shop/clubs/teamwear` | product is held from the Shopify load, so /product/<slug> has no page; interim permanent redirect to its primary collection (club axis: teamwear); held by exception attribute_needs_decision:product:3154; the row returns to same_url once the product is loaded and this map is rebuilt |
+| `/product/modena-volley-shorts` | `/shop/clubs/teamwear` | product is held from the Shopify load, so /product/<slug> has no page; interim permanent redirect to its primary collection (club axis: teamwear); held by exception attribute_needs_decision:product:3173; the row returns to same_url once the product is loaded and this map is rebuilt |
+| `/product/provolley-jersey` | `/shop/clubs/provolley-academy` | product is held from the Shopify load, so /product/<slug> has no page; interim permanent redirect to its primary collection (club axis: provolley-academy); held by exception attribute_needs_decision:product:6718; the row returns to same_url once the product is loaded and this map is rebuilt |
+| `/product/provolley-womens-jersey` | `/shop/clubs/provolley-academy` | product is held from the Shopify load, so /product/<slug> has no page; interim permanent redirect to its primary collection (club axis: provolley-academy); held by exception attribute_needs_decision:product:6758; the row returns to same_url once the product is loaded and this map is rebuilt |
 | `/product-tag/auckland` | `/shop` | geographic/marketing SEO tag with no approved collection; Shop All is the nearest genuine listing (never the home page) |
 | `/product-tag/australia` | `/shop` | geographic/marketing SEO tag with no approved collection; Shop All is the nearest genuine listing (never the home page) |
 | `/product-tag/brisbane` | `/shop` | geographic/marketing SEO tag with no approved collection; Shop All is the nearest genuine listing (never the home page) |
@@ -377,6 +438,10 @@ in theme templates or widgets rather than in page/post HTML.
 # 1. Rebuild the map from exports/ (deterministic)
 python3 scripts/redirects/build_redirect_map.py
 
+# 1b. Offline check, no server needed: every same_url row is a product the
+#     migration really loaded (catches a held product straight away)
+python3 scripts/redirects/verify_redirects.py --ledger-only
+
 # 2. Build and start the app (next.config.ts reads docs/redirects/redirects.json)
 SHOPIFY_OPTIONAL=1 npm run build
 SHOPIFY_OPTIONAL=1 NODE_ENV=production PORT=3114 npx next start &
@@ -390,11 +455,13 @@ kill %1
 
 The verifier writes `verification-report.md` and exits non-zero on a real
 failure. Destinations that 404 only because the page is not built in the
-prototype yet are reported separately and do not fail the run.
+prototype yet are reported separately and do not fail the run. A `same_url`
+row whose handle is not in the migration load ledger is a real failure; step 1b
+runs that one check alone and needs neither a build nor a server.
 
 ## Implementation
 
-- `next.config.ts` imports `redirects.json` (136 rules) and returns it from `redirects()`.
+- `next.config.ts` imports `redirects.json` (142 rules) and returns it from `redirects()`.
 - `src/proxy.ts` imports `gone.json` (48 paths) and answers each one with a
   real 410, a small retired-page body, `Cache-Control: public, max-age=3600,
   must-revalidate` (never `immutable`, so wiring a real page later is not stuck

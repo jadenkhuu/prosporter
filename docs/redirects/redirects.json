@@ -570,6 +570,11 @@
     "permanent": true
   },
   {
+    "source": "/product/inner-west-jersey",
+    "destination": "/shop/clubs/inner-west-volley",
+    "permanent": true
+  },
+  {
     "source": "/product/inner-west-volley-mens-shorts-black-white",
     "destination": "/product/inner-west-volley-men-shorts-black-white",
     "permanent": true
@@ -590,6 +595,26 @@
     "permanent": true
   },
   {
+    "source": "/product/modena-jersey",
+    "destination": "/shop/jerseys",
+    "permanent": true
+  },
+  {
+    "source": "/product/modena-volley-jersey",
+    "destination": "/shop/clubs/teamwear",
+    "permanent": true
+  },
+  {
+    "source": "/product/modena-volley-shorts",
+    "destination": "/shop/clubs/teamwear",
+    "permanent": true
+  },
+  {
+    "source": "/product/provolley-jersey",
+    "destination": "/shop/clubs/provolley-academy",
+    "permanent": true
+  },
+  {
     "source": "/product/provolley-men-jersey-navy-white-yellow",
     "destination": "/product/provolley-mens-volleyball-jersey-sydney",
     "permanent": true
@@ -607,6 +632,11 @@
   {
     "source": "/product/provolley-women-jersey-navy-white-yellow",
     "destination": "/product/provolley-womens-volleyball-jersey-sydney-australia",
+    "permanent": true
+  },
+  {
+    "source": "/product/provolley-womens-jersey",
+    "destination": "/shop/clubs/provolley-academy",
     "permanent": true
   },
   {

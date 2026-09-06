@@ -156,6 +156,21 @@ equivalent; `<run-id>/id_map.jsonl` is the source-to-destination map to build th
 from. Load and verify redirects **before** DNS, so the first request on the new
 domain already resolves.
 
+**Rebuild the map after any held product is loaded.** A product held back from the
+load (an unresolved blocking exception in `exception-register.csv`, or simply absent
+from the ledger) has no product page, so `scripts/redirects/build_redirect_map.py`
+grades its legacy path `held_redirect_to_collection` — an interim 308 to the
+product's primary collection instead of a `same_url` 200 that would really be a 404.
+That grade is recomputed from the register and the ledger on every run, so the moment
+the client's decision unblocks the product and it loads, re-run the builder and the
+row returns to `same_url`; until then the 308 shadows the new product page. The
+one-line check that nothing has drifted, no server or build needed:
+
+```bash
+python3 scripts/redirects/build_redirect_map.py
+python3 scripts/redirects/verify_redirects.py --ledger-only
+```
+
 ## 6. DNS
 
 Last. Once the storefront serves the published catalog and redirects are in place:

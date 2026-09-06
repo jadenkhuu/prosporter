@@ -9,8 +9,14 @@ and emits the PII-free redirect artefacts in ``docs/redirects/``:
   * gone.json               source paths that must answer 410
   * README.md               counts, mapping tables, decisions, rerun instructions
 
-Python 3 standard library only. Deterministic and re-runnable: the same exports
-always produce byte-identical output.
+Python 3 standard library only, plus ``scripts/migration/normalize.py`` (also
+stdlib-only) for the IA axis assignment, so a held product's collection is derived
+from exactly the rules that build its Shopify collection memberships. Deterministic
+and re-runnable: the same exports always produce byte-identical output.
+
+Products the migration held back from the load are reconciled here: their legacy
+paths cannot be ``same_url`` because they have no product page. See the "Held
+products" section of the generated README.
 
     python3 scripts/redirects/build_redirect_map.py
 
@@ -32,6 +38,21 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 EXPORTS = os.path.join(ROOT, "exports")
 OUT = os.path.join(ROOT, "docs", "redirects")
+MIGRATION_DOCS = os.path.join(ROOT, "docs", "migration")
+EXCEPTION_REGISTER = os.path.join(MIGRATION_DOCS, "exception-register.csv")
+
+# The migration load ledgers, most authoritative first. Only product handles are
+# read from them; they hold no customer data.
+LEDGER_CANDIDATES = (
+    os.path.join(EXPORTS, "migration", "live-store", "store.json"),
+    os.path.join(EXPORTS, "migration", "fake-store", "store.json"),
+)
+
+# The IA axis assignment used by the migration transform. Imported rather than
+# restated so a held product's collection is derived from exactly the same rules
+# that build its Shopify collection memberships.
+sys.path.insert(0, os.path.join(ROOT, "scripts", "migration"))
+import normalize as woo_normalize  # noqa: E402  (stdlib-only, in-repo)
 
 LEGACY_HOSTS = {"prosporter.com.au", "www.prosporter.com.au"}
 
@@ -505,6 +526,151 @@ def load(name: str):
         return json.load(fh)
 
 
+# ---------------------------------------------------------------------------
+# Held products (reconciliation with the migration pipeline)
+# ---------------------------------------------------------------------------
+#
+# A legacy /product/<slug> path may only be graded `same_url` if the product is
+# actually live on the storefront. The migration holds a record back from the
+# load when it carries an unresolved blocking exception, and a held product has
+# no Shopify product and therefore no /product/<slug> page: `same_url` would
+# promise a 200 that is really a 404 (QA defect D4).
+#
+# A product is HELD when either of these is true:
+#   * docs/migration/exception-register.csv carries an unresolved row for it with
+#     a blocking code (`record_held_from_load`) or `critical` severity, or
+#   * a load ledger is available and the handle is not in it.
+# Both signals are re-read on every run, so the moment the client unblocks the
+# product and it loads, the row goes back to `same_url` with no hand editing.
+
+HELD_OUTCOME = "held_redirect_to_collection"
+HOLD_CODES = {"record_held_from_load"}
+RESOLVED_STATUSES = {"resolved", "fixed", "done", "n/a"}
+
+
+def read_exception_holds(path: str = EXCEPTION_REGISTER) -> dict[str, str]:
+    """Product handle -> the exception reference that holds it back from load.
+
+    Reads only `record_type == product` rows. The register is derived and
+    PII-free (see docs/migration/README.md).
+    """
+    if not os.path.exists(path):
+        return {}
+    holds: dict[str, list[str]] = {}
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            if (row.get("record_type") or "").strip() != "product":
+                continue
+            if (row.get("retry_status") or "").strip().lower() in RESOLVED_STATUSES:
+                continue
+            code = (row.get("code") or "").strip()
+            severity = (row.get("severity") or "").strip().lower()
+            if code not in HOLD_CODES and severity != "critical":
+                continue
+            handle = (row.get("record_ref") or "").strip()
+            if not handle:
+                continue
+            holds.setdefault(handle, []).append(f"{code}:product:{row.get('record_id', '')}")
+    # Deterministic: the alphabetically first reference, which is the root-cause
+    # code rather than the downstream `record_held_from_load` it produced.
+    return {handle: sorted(refs)[0] for handle, refs in holds.items()}
+
+
+def read_loaded_handles(candidates=LEDGER_CANDIDATES) -> tuple[set[str] | None, str | None]:
+    """Product handles present in the first available load ledger.
+
+    Returns (handles, ledger_path) or (None, None) when no ledger exists, in
+    which case the exception register is the only hold signal.
+    """
+    for path in candidates:
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as fh:
+                store = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        products = (store.get("objects") or {}).get("Product")
+        if isinstance(products, dict):
+            return set(products), os.path.relpath(path, ROOT)
+    return None, None
+
+
+def held_product_handles(exception_holds: dict[str, str], loaded: set[str] | None,
+                         product_slugs) -> dict[str, dict]:
+    """Merge both hold signals into handle -> {ref, why}."""
+    held: dict[str, dict] = {}
+    for handle, ref in exception_holds.items():
+        held[handle] = {"ref": ref, "why": ["exception register"]}
+    if loaded is not None:
+        for slug in product_slugs:
+            if slug in loaded:
+                continue
+            entry = held.setdefault(slug, {"ref": "not in the load ledger", "why": []})
+            entry["why"].append("absent from the load ledger")
+    for entry in held.values():
+        entry["why"] = sorted(set(entry["why"]))
+    return held
+
+
+def primary_collection(product: dict) -> tuple[str, str]:
+    """The one collection route a held product's legacy URL should land on.
+
+    Precedence club > product type (when the type came from a real category) >
+    surface > inferred type. The club collection is the most specific listing a
+    customer can be sent to; `beach`/`indoor` are the broadest axis, so they only
+    win when the product's type had to be guessed from its name.
+    """
+    categories = [c.get("name", "") for c in product.get("categories", []) or []]
+    name = product.get("name", "") or ""
+    clubs = woo_normalize.assign_clubs(categories, name)
+    if clubs and clubs[0] in CLUB_ROUTES:
+        return CLUB_ROUTES[clubs[0]], f"club axis: {clubs[0]}"
+    type_handle, how = woo_normalize.assign_product_type(categories, name)
+    if how == "category" and type_handle in TYPE_ROUTES:
+        return TYPE_ROUTES[type_handle], f"type axis: {type_handle} (from category)"
+    surface = woo_normalize.assign_surface(categories, name)
+    if surface and surface in SURFACE_ROUTES:
+        return SURFACE_ROUTES[surface], f"surface axis: {surface}"
+    if type_handle in TYPE_ROUTES:
+        return TYPE_ROUTES[type_handle], f"type axis: {type_handle} ({how})"
+    return SHOP_ALL, "no IA axis resolved; Shop All is the nearest genuine listing"
+
+
+def apply_held_products(rows, products_by_slug, held) -> list[dict]:
+    """Downgrade every `same_url` product row whose product is held.
+
+    Returns the rows that changed, in source_path order.
+    """
+    changed = []
+    for row in rows:
+        if row["source_type"] != "product" or row["outcome"] != "same_url":
+            continue
+        handle = row["source_path"].rsplit("/", 1)[-1]
+        hold = held.get(handle)
+        if not hold:
+            continue
+        product = products_by_slug.get(handle)
+        if product is None:
+            destination, rationale = SHOP_ALL, "no product record in the exports"
+        else:
+            destination, rationale = primary_collection(product)
+        row["outcome"] = HELD_OUTCOME
+        row["destination"] = destination
+        row["owner"] = "nextjs"
+        row["reason"] = (
+            "product is held from the Shopify load, so /product/<slug> has no page; "
+            f"interim permanent redirect to its primary collection ({rationale}); "
+            f"held by exception {hold['ref']}; the row returns to same_url once the "
+            "product is loaded and this map is rebuilt"
+        )
+        row["needs_client_decision"] = "true"
+        row["evidence"] += "; held: " + ", ".join(hold["why"]) + f" ({hold['ref']})"
+        changed.append(row)
+    changed.sort(key=lambda r: r["source_path"])
+    return changed
+
+
 def main() -> int:
     if not os.path.isdir(EXPORTS):
         print(
@@ -962,14 +1128,22 @@ def main() -> int:
     rows = list(reg.rows.values())
     by_path = {r["source_path"]: r for r in rows}
 
+    # Reconcile with the migration: a product that was held back from the load
+    # has no /product/<slug> page, so it must not be graded same_url (QA D4).
+    exception_holds = read_exception_holds()
+    loaded_handles, ledger_path = read_loaded_handles()
+    held = held_product_handles(exception_holds, loaded_handles,
+                                {p["slug"] for p in products})
+    held_rows = apply_held_products(rows, {p["slug"]: p for p in products}, held)
+
     for row in rows:
-        if row["outcome"] == "301":
+        if row["outcome"] in ("301", HELD_OUTCOME):
             dest = row["destination"]
             seen = {row["source_path"]}
             guard = 0
             while (
                 dest in by_path
-                and by_path[dest]["outcome"] == "301"
+                and by_path[dest]["outcome"] in ("301", HELD_OUTCOME)
                 and dest not in seen
                 and guard < 10
             ):
@@ -988,13 +1162,13 @@ def main() -> int:
 
     problems = []
     for row in rows:
-        if row["outcome"] == "301":
+        if row["outcome"] in ("301", HELD_OUTCOME):
             if row["destination"] == row["source_path"]:
                 problems.append(f"self-redirect: {row['source_path']}")
             if row["destination"] in ("/", ""):
                 problems.append(f"redirect to home/empty: {row['source_path']}")
             target = by_path.get(row["destination"])
-            if target and target["outcome"] == "301":
+            if target and target["outcome"] in ("301", HELD_OUTCOME):
                 problems.append(
                     f"chain remains: {row['source_path']} -> {row['destination']}"
                 )
@@ -1031,7 +1205,9 @@ def main() -> int:
     nextjs_redirects = [
         {"source": r["source_path"], "destination": r["destination"], "permanent": True}
         for r in rows
-        if r["outcome"] == "301" and r["owner"] == "nextjs" and "?" not in r["source_path"]
+        if r["outcome"] in ("301", HELD_OUTCOME)
+        and r["owner"] == "nextjs"
+        and "?" not in r["source_path"]
     ]
     nextjs_redirects.sort(key=lambda r: r["source"])
     with open(os.path.join(OUT, "redirects.json"), "w", encoding="utf-8") as fh:
@@ -1046,7 +1222,7 @@ def main() -> int:
         fh.write("\n")
 
     write_readme(rows, nextjs_redirects, gone, product_categories, product_tags,
-                 demo_post_slugs, dirty_slug_notes)
+                 demo_post_slugs, dirty_slug_notes, held_rows, ledger_path)
 
     by_outcome = Counter(r["outcome"] for r in rows)
     by_type = Counter(r["source_type"] for r in rows)
@@ -1055,11 +1231,16 @@ def main() -> int:
     print("by type:    " + ", ".join(f"{k}={v}" for k, v in sorted(by_type.items())))
     print(f"redirects.json: {len(nextjs_redirects)} rules  gone.json: {len(gone)} paths")
     print(f"client decisions: {sum(1 for r in rows if r['needs_client_decision'] == 'true')}")
+    print(
+        f"held products: {len(held_rows)} legacy product path(s) downgraded from "
+        f"same_url to {HELD_OUTCOME} "
+        f"(ledger: {ledger_path or 'none found, exception register only'})"
+    )
     return 0
 
 
 def write_readme(rows, nextjs_redirects, gone, product_categories, product_tags,
-                 demo_post_slugs, dirty_slug_notes) -> None:
+                 demo_post_slugs, dirty_slug_notes, held_rows, ledger_path) -> None:
     by_outcome = Counter(r["outcome"] for r in rows)
     by_type = Counter(r["source_type"] for r in rows)
     cross = Counter((r["source_type"], r["outcome"]) for r in rows)
@@ -1093,6 +1274,10 @@ def write_readme(rows, nextjs_redirects, gone, product_categories, product_tags,
     a(f"| `301` | {by_outcome.get('301', 0)} | Permanent redirect to a direct equivalent |")
     a(f"| `410` | {by_outcome.get('410', 0)} | Intentional retirement |")
     a(f"| `client_decision` | {by_outcome.get('client_decision', 0)} | Ambiguous, blocked on the client |")
+    a(
+        f"| `{HELD_OUTCOME}` | {by_outcome.get(HELD_OUTCOME, 0)} | Product held from the "
+        "Shopify load; interim permanent redirect to its primary collection |"
+    )
     a("")
     a("> `outcome = 301` means *permanent redirect*. Next.js `permanent: true` emits **308**")
     a("> (it preserves the request method); the `status_code` column records 308 for")
@@ -1100,14 +1285,71 @@ def write_readme(rows, nextjs_redirects, gone, product_categories, product_tags,
     a("")
     a("## Counts by source type")
     a("")
-    a("| Source type | Total | same_url | 301 | 410 | client_decision |")
-    a("|---|---:|---:|---:|---:|---:|")
+    a("| Source type | Total | same_url | 301 | 410 | client_decision | held |")
+    a("|---|---:|---:|---:|---:|---:|---:|")
     for stype in sorted(by_type):
         a(
             f"| `{stype}` | {by_type[stype]} | {cross.get((stype, 'same_url'), 0)} | "
             f"{cross.get((stype, '301'), 0)} | {cross.get((stype, '410'), 0)} | "
-            f"{cross.get((stype, 'client_decision'), 0)} |"
+            f"{cross.get((stype, 'client_decision'), 0)} | "
+            f"{cross.get((stype, HELD_OUTCOME), 0)} |"
         )
+    a("")
+    a("## Held products (not loaded to Shopify yet)")
+    a("")
+    a("A legacy `/product/<slug>` path may only be graded `same_url` if the product is")
+    a("really on the storefront. The migration holds a record back from the load while it")
+    a("carries an unresolved blocking exception, and a held product has no Shopify product")
+    a("and therefore no product page - so `same_url` would promise a 200 that is actually a")
+    a("404. That was QA defect **D4**: six indexed legacy product URLs recorded as")
+    a("`same_url, 200` returned 404 on the deployed storefront.")
+    a("")
+    a("### The rule")
+    a("")
+    a("On every run the builder reconciles each `same_url` product row against two")
+    a("signals. A product is **held** when either is true:")
+    a("")
+    a("1. `docs/migration/exception-register.csv` has an unresolved row for it whose code")
+    a("   is `record_held_from_load` or whose severity is `critical`.")
+    a(f"2. A migration load ledger is available and the handle is not in it"
+      + (f" (`{ledger_path}`)." if ledger_path else " (none found on this run)."))
+    a("")
+    a("A held row becomes:")
+    a("")
+    a(f"- `outcome = {HELD_OUTCOME}`, `status_code = 308`, `owner = nextjs`")
+    a("- `destination` = the product's **primary collection**, so the link keeps its")
+    a("  equity and the customer lands on the nearest genuine listing rather than a 404")
+    a("- `needs_client_decision = true`, and the `reason` and `evidence` columns name the")
+    a("  exception that holds it (`<code>:product:<woo id>`)")
+    a("")
+    a("The redirect is **interim**. Both signals are re-read on every run, so once the")
+    a("client unblocks the product and it loads, the next rebuild puts the row back to")
+    a("`same_url` on its own - nothing is hand edited. **Rebuild this map after any held")
+    a("product is loaded**, otherwise the 308 will keep shadowing the new product page.")
+    a("")
+    a("Primary collection is taken from the same IA assignment the migration transform")
+    a("uses (`scripts/migration/normalize.py`: `assign_clubs`, `assign_product_type`,")
+    a("`assign_surface`), with precedence **club > product type from a real category >")
+    a("surface > inferred type > `/shop`**. The club collection is the most specific")
+    a("listing a customer can be sent to; `beach`/`indoor` are the broadest axis, so they")
+    a("only win when the type had to be guessed from the product name.")
+    a("")
+    if held_rows:
+        a("### Held rows in this map")
+        a("")
+        a("| Legacy path | Destination | Held by |")
+        a("|---|---|---|")
+        for r in held_rows:
+            ref = r["evidence"].rsplit("(", 1)[-1].rstrip(")")
+            a(f"| `{r['source_path']}` | `{r['destination']}` | `{ref}` |")
+        a("")
+    else:
+        a("No product is held in this run.")
+        a("")
+    a("Held products whose legacy path was already `client_decision` (a draft or a")
+    a("duplicate handle) keep that outcome: they have no public legacy URL to preserve, so")
+    a("there is nothing to redirect. `hoodie-pants-winter-2024` (an Easy Product Bundles")
+    a("record with no Shopify equivalent) is the one such row today.")
     a("")
     a("## Source inventory")
     a("")
@@ -1279,6 +1521,10 @@ def write_readme(rows, nextjs_redirects, gone, product_categories, product_tags,
     a("# 1. Rebuild the map from exports/ (deterministic)")
     a("python3 scripts/redirects/build_redirect_map.py")
     a("")
+    a("# 1b. Offline check, no server needed: every same_url row is a product the")
+    a("#     migration really loaded (catches a held product straight away)")
+    a("python3 scripts/redirects/verify_redirects.py --ledger-only")
+    a("")
     a("# 2. Build and start the app (next.config.ts reads docs/redirects/redirects.json)")
     a("SHOPIFY_OPTIONAL=1 npm run build")
     a("SHOPIFY_OPTIONAL=1 NODE_ENV=production PORT=3114 npx next start &")
@@ -1292,7 +1538,9 @@ def write_readme(rows, nextjs_redirects, gone, product_categories, product_tags,
     a("")
     a("The verifier writes `verification-report.md` and exits non-zero on a real")
     a("failure. Destinations that 404 only because the page is not built in the")
-    a("prototype yet are reported separately and do not fail the run.")
+    a("prototype yet are reported separately and do not fail the run. A `same_url`")
+    a("row whose handle is not in the migration load ledger is a real failure; step 1b")
+    a("runs that one check alone and needs neither a build nor a server.")
     a("")
     a("## Implementation")
     a("")
