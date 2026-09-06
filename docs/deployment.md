@@ -158,6 +158,130 @@ the blocks are server-rendered rather than injected by client JavaScript.
 Finally, submit `https://<host>/sitemap.xml` in Google Search Console once the custom
 domain is live (CLNT-303).
 
+## Analytics (GA4, CLNT-179)
+
+One environment variable turns the whole thing on:
+
+| Variable | Where | Value |
+| --- | --- | --- |
+| `NEXT_PUBLIC_GA_MEASUREMENT_ID` | Vercel → Production **only, at cutover** | `G-XXXXXXXXXX` |
+| `NEXT_PUBLIC_GA_DEBUG` | Local `.env.local`, or a Preview deployment while validating | `1` |
+
+### Why it is not set yet
+
+The client's existing GA4 property is attached to the **live WooCommerce store**. Sending
+this storefront's traffic to it before cutover would mix a staging site's sessions into the
+numbers the business currently reports on. So the variable stays unset until the client
+supplies the property (or a new one) and the DNS switch happens.
+
+Unset is a hard off, not a soft one: `src/components/analytics/Analytics.tsx` returns `null`,
+so there is no `<script>` tag, no request to `googletagmanager.com`, and `track()` in
+`src/lib/analytics/track.ts` returns before it logs or pushes anything. Nothing to clean up
+later — just add the variable and redeploy.
+
+Do **not** set it on Preview deployments for day-to-day work. Preview traffic is agency
+traffic; it would pollute the property with sessions nobody wants to report on.
+
+### What is implemented
+
+Loaded with `next/script` (`afterInteractive`), not `@next/third-parties/google` — that
+package is not a dependency here and is not bundled with Next, and it was not worth adding
+one for a 20-line snippet. Behaviour is the same.
+
+- **Consent Mode v2 defaults**, set before `config`: `ad_storage`, `ad_user_data` and
+  `ad_personalization` **denied**; `analytics_storage` **granted**. No consent banner is in
+  scope for this build. When one is added it flips these at runtime with
+  `gtag('consent', 'update', {...})` — no change to the tag itself is needed.
+- **No advertising signals**: `allow_google_signals: false`,
+  `allow_ad_personalization_signals: false`, `anonymize_ip: true`. This is an
+  analytics-only tag.
+- **No personal data.** No `user_id`, email, name, phone or address is ever passed. A unit
+  test asserts the builders emit none of those keys.
+- **`send_page_view: false`** plus a `page_view` we fire ourselves on every pathname+search
+  change (`src/lib/analytics/page-view.ts`). Without this, a hard load would be counted by
+  gtag and a client-side navigation not counted at all. With it: exactly one `page_view` per
+  distinct URL, hard load and SPA navigation alike.
+
+### Where each event fires
+
+| Event | Fired from | Notes |
+| --- | --- | --- |
+| `page_view` | `src/components/analytics/Analytics.tsx` (`<PageViews />`) | Once per distinct pathname+search. |
+| `view_item` | `src/components/product/ProductDetail.tsx` | Once per product, on mount. **Not** re-sent when the shopper changes size or colour. |
+| `add_to_cart` | `src/components/cart/CartProvider.tsx` (`addVariant`) | Only after the `addToCart` server action returns without an error, and only for the line Shopify actually returned. Reports the quantity just added, not the line's new total. |
+| `begin_checkout` | `src/components/cart/CartDrawer.tsx` (Checkout button) | All cart lines, Shopify's costed total as `value`, the applied discount code as `coupon`. |
+| `purchase` | **Shopify, not this app** | See below. |
+
+`item_id` is the merchant SKU when the variant has one, otherwise the numeric Shopify
+variant id — the same identifier Shopify's own integration sends, so both halves of the
+funnel land on the same product in GA4.
+
+### `purchase` comes from Shopify
+
+Checkout is hosted by Shopify on `prosporter.myshopify.com`. This app never sees the order,
+so it cannot and must not fire `purchase`. Two steps, both on the Shopify side, at cutover:
+
+1. Install/connect the **Google & YouTube** channel in the Shopify admin and connect it to
+   **the same GA4 property** as `NEXT_PUBLIC_GA_MEASUREMENT_ID`. It emits `purchase` (and
+   the checkout-funnel events) from Shopify's checkout.
+2. In GA4: **Admin → Data streams → the web stream → Configure tag settings → Configure your
+   domains**, and list both the storefront host and `prosporter.myshopify.com` (plus
+   `shop.app` if Shop Pay is enabled).
+
+### Cross-domain: how the session stitches
+
+The storefront tag is configured with a gtag `linker` covering
+`prosporter.myshopify.com` and `shop.app` (`CHECKOUT_LINKER_DOMAINS` in
+`src/lib/analytics/config.ts`), `accept_incoming: true`. The drawer's Checkout control is a
+real `<a href={checkoutUrl}>`, so gtag decorates the click with a **`_gl` linker parameter**
+carrying the GA client id; Shopify's Google tag on the checkout page reads `_gl` and adopts
+that client id, so `begin_checkout` here and `purchase` there sit in one session.
+
+Confidence and caveats, to be verified during QA rather than assumed:
+
+- `_gl` is the current GA4 mechanism. The `_ga` client-id query parameter is the
+  **Universal Analytics-era** form; do not build on it.
+- The GA4 admin "Configure your domains" list (step 2 above) and the `linker` config do the
+  same job. Setting both is belt-and-braces and is the recommended path — the admin setting
+  is what Google now documents, the in-code `linker` is what guarantees the decoration
+  happens even before the admin list propagates.
+- Not yet verified against the live store: whether Shopify's checkout tag honours `_gl` on
+  every checkout-extensibility surface. Validate in DebugView at cutover (checklist below);
+  if the session splits, the fix is on the Shopify/GA4 admin side, not in this repo.
+
+### Validating with GA4 DebugView
+
+```bash
+# Local: point at a throwaway/dev GA4 property, never the client's live one.
+echo 'NEXT_PUBLIC_GA_MEASUREMENT_ID=G-XXXXXXXXXX' >> .env.local
+echo 'NEXT_PUBLIC_GA_DEBUG=1' >> .env.local
+npm run dev
+```
+
+`NEXT_PUBLIC_GA_DEBUG=1` does two things: it adds `debug_mode: true` to the config, which
+puts every hit in **GA4 → Admin → DebugView**, and it mirrors each event to the browser
+console as `[ga4] <event> {…}` so you can see the payload without leaving the page. Both are
+still gated on the measurement id — with no id there is no console output either.
+
+### QA checklist (each event, once and only once)
+
+- [ ] With `NEXT_PUBLIC_GA_MEASUREMENT_ID` unset: no `googletagmanager.com` request in the
+      network panel, no `[ga4]` line in the console.
+- [ ] `page_view` — load the home page: exactly one. Navigate to /shop and to a product:
+      one each. Press Back: one. Re-render (change a filter that does not change the URL):
+      none.
+- [ ] `page_view` — a filter change that *does* change the query string: exactly one.
+- [ ] `view_item` — open a product page: one. Change size and colour: still one.
+- [ ] `add_to_cart` — add to bag: one, with `item_id`, `item_variant`, `price`, `quantity`
+      and `currency` populated. Add the same variant again: one more, `quantity: 1`.
+- [ ] `add_to_cart` — a failed add (sold-out variant): **none**.
+- [ ] `begin_checkout` — click Checkout: one, `value` equal to the drawer's Total, `coupon`
+      set when a discount code is applied.
+- [ ] Cross-domain — the checkout URL that opens carries a `_gl=` parameter.
+- [ ] `purchase` — complete a test order: one, from Shopify, in the **same session** as the
+      `begin_checkout` above (check the user snapshot in DebugView).
+- [ ] No event carries an email, name, phone, address or user id.
+
 ## Custom domain and go-live (later)
 
 `prosporter.com.au` moves to Vercel at cutover (see `docs/migration/cutover-runbook.md`).

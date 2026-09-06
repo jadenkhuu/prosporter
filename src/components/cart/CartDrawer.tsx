@@ -4,6 +4,7 @@ import { useCallback, useId, useRef, useState } from "react";
 import { useCart } from "./CartProvider";
 import { formatPrice } from "@/lib/format";
 import { normalizeDiscountCode } from "@/lib/cart-totals";
+import { beginCheckoutParams, track } from "@/lib/analytics";
 import { useModalDialog } from "@/lib/hooks/useModalDialog";
 import { CloseIcon, PlusIcon, MinusIcon, ArrowRight, ChevronDown } from "@/components/icons";
 import type { CartLine } from "@/lib/shopify/types";
@@ -161,6 +162,7 @@ export function CartDrawer() {
     setQty,
     remove,
     checkoutUrl,
+    discountCodes,
     enabled,
     isPending,
     error,
@@ -436,6 +438,21 @@ export function CartDrawer() {
                   href={checkoutUrl}
                   target="_self"
                   rel="nofollow"
+                  // GA4 begin_checkout (CLNT-179). `total` is Shopify's costed
+                  // amount, so a cart-level discount is reflected in `value`.
+                  // The click then leaves for prosporter.myshopify.com, where
+                  // the gtag linker appends the client id so the Shopify-side
+                  // `purchase` stitches onto this session.
+                  onClick={() =>
+                    track(
+                      "begin_checkout",
+                      beginCheckoutParams(lines, {
+                        coupon: discountCodes[0],
+                        value: total,
+                        currency: currencyCode,
+                      }),
+                    )
+                  }
                   className="mt-4 flex items-center justify-center gap-2 rounded-full bg-ink px-6 py-3.5 text-sm font-semibold text-paper transition-colors hover:bg-ink-2"
                 >
                   Checkout

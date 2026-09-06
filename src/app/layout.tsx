@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Archivo, Inter } from "next/font/google";
 import "./globals.css";
+import { Analytics } from "@/components/analytics/Analytics";
 import { CartProvider } from "@/components/cart/CartProvider";
 import { isShopifyConfigured } from "@/lib/shopify";
 import { Header } from "@/components/layout/Header";
@@ -68,6 +69,10 @@ export default function RootLayout({
             /search?q= for sitelinks. Rendered server-side, so it is in the
             initial HTML a crawler reads. */}
         <JsonLd data={[buildOrganizationJsonLd(), buildWebSiteJsonLd()]} />
+        {/* GA4 (CLNT-179). Renders nothing at all until
+            NEXT_PUBLIC_GA_MEASUREMENT_ID is set, which is the state until
+            cutover. See docs/deployment.md § Analytics. */}
+        <Analytics />
         <CartProvider enabled={cartEnabled}>
           <Header />
           {/* tabIndex={-1} so the skip link can move real focus here, not just

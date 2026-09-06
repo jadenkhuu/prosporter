@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Image from "next/image";
 import {
   findVariant,
@@ -9,6 +9,7 @@ import {
 } from "@/lib/catalog-view";
 import { formatPrice, formatPriceRange, swatchFor } from "@/lib/format";
 import { useCart } from "@/components/cart/CartProvider";
+import { track, viewItemParams } from "@/lib/analytics";
 import { PLACEHOLDER_IMAGE } from "@/components/product/ProductCard";
 import { CheckIcon, ChevronDown } from "@/components/icons";
 
@@ -60,6 +61,25 @@ export function ProductDetail({ product }: { product: CatalogProductDetail }) {
   const [error, setError] = useState(false);
   const uid = useId();
   const errorId = `pdp-error-${uid}`;
+
+  /**
+   * GA4 view_item (CLNT-179): once per product, not once per variant click.
+   * The handle in a ref is what makes that true — the effect re-runs on a
+   * client-side navigation to another product (same component instance, new
+   * props) but not on a size or colour change, and Strict Mode's double
+   * invocation in development sends nothing extra. A single-variant product
+   * reports that variant so `item_id` is its SKU; a multi-variant one reports
+   * product-level identity, because no variant has been chosen yet.
+   */
+  const viewedHandle = useRef<string | null>(null);
+  useEffect(() => {
+    if (viewedHandle.current === product.handle) return;
+    viewedHandle.current = product.handle;
+    track(
+      "view_item",
+      viewItemParams(product, product.variants.length === 1 ? product.variants[0] : null),
+    );
+  }, [product]);
 
   const variant = findVariant(product, selection);
   const needsSelection = product.options.length > 0;

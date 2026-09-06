@@ -15,6 +15,7 @@ import {
 import type { Cart, CartLine } from "@/lib/shopify/types";
 import { nodes } from "@/lib/shopify/types";
 import { appliedDiscountCodes, cartDiscountAmount, cartTotals } from "@/lib/cart-totals";
+import { addToCartParams, findLineByVariant, track } from "@/lib/analytics";
 import {
   addToCart,
   applyDiscountCode as applyDiscountCodeAction,
@@ -219,7 +220,23 @@ export function CartProvider({
       dismissError: () => setError(null),
       addVariant: (variantId, quantity = 1) => {
         setOpen(true);
-        run(() => addToCart(variantId, quantity));
+        run(async () => {
+          const result = await addToCart(variantId, quantity);
+          // GA4 add_to_cart (CLNT-179): only on a successful server action, and
+          // only for the line Shopify actually returned, so a rejected add or a
+          // sold-out variant never reports a sale that did not happen. The
+          // event carries the quantity just added, not the line's new total.
+          if (!result.error && result.cart) {
+            const line = findLineByVariant(nodes(result.cart.lines), variantId);
+            if (line) {
+              track(
+                "add_to_cart",
+                addToCartParams(line, quantity, result.cart.cost.totalAmount.currencyCode),
+              );
+            }
+          }
+          return result;
+        });
       },
       setQty: (lineId, quantity) =>
         run(() => updateLineAction(lineId, quantity), {
