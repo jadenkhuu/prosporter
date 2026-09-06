@@ -1,34 +1,42 @@
 [
-  {
-    "id": 9101,
-    "source_url": "https://fixtures.invalid/img/team-tee-front.jpg",
-    "alt_text": "Fixture team tee front",
-    "post": 101,
-    "media_type": "image",
-    "mime_type": "image/jpeg"
-  },
-  {
-    "id": 9102,
-    "source_url": "https://fixtures.invalid/img/beach-shorts.jpg",
-    "alt_text": "",
-    "post": 102,
-    "media_type": "image",
-    "mime_type": "image/jpeg"
-  },
-  {
-    "id": 9103,
-    "source_url": "https://fixtures.invalid/img/socks.jpg",
-    "alt_text": "Fixture socks",
-    "post": 103,
-    "media_type": "image",
-    "mime_type": "image/jpeg"
-  },
-  {
-    "id": 9104,
-    "source_url": "https://fixtures.invalid/img/jersey.jpg",
-    "alt_text": "Fixture jersey",
-    "post": 104,
-    "media_type": "image",
-    "mime_type": "image/jpeg"
-  }
+ {
+  "id": 9101,
+  "source_url": "https://fixtures.invalid/wp-content/uploads/2026/01/team-tee-front.jpg",
+  "alt_text": "Fixture team tee front",
+  "post": 101,
+  "media_type": "image",
+  "mime_type": "image/jpeg"
+ },
+ {
+  "id": 9102,
+  "source_url": "https://fixtures.invalid/wp-content/uploads/2026/01/beach-shorts.jpg",
+  "alt_text": "",
+  "post": 102,
+  "media_type": "image",
+  "mime_type": "image/jpeg"
+ },
+ {
+  "id": 9103,
+  "source_url": "https://fixtures.invalid/wp-content/uploads/2026/01/socks.jpg",
+  "alt_text": "Fixture socks",
+  "post": 103,
+  "media_type": "image",
+  "mime_type": "image/jpeg"
+ },
+ {
+  "id": 9104,
+  "source_url": "https://fixtures.invalid/wp-content/uploads/2026/01/jersey.jpg",
+  "alt_text": "Fixture jersey",
+  "post": 104,
+  "media_type": "image",
+  "mime_type": "image/jpeg"
+ },
+ {
+  "id": 9105,
+  "source_url": "https://fixtures.invalid/wp-content/uploads/2026/01/size-guide.pdf",
+  "alt_text": "",
+  "post": 201,
+  "media_type": "file",
+  "mime_type": "application/pdf"
+ }
 ]

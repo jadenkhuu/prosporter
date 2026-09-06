@@ -12,6 +12,7 @@ import csv
 from collections import Counter, defaultdict
 from pathlib import Path
 
+import body_media as BM
 from common import DOCS_OUT, clean_text, to_decimal_string, write_json
 
 
@@ -172,6 +173,9 @@ def reconcile(data: dict, records: dict, target, exc, run_meta: dict) -> dict:
           "WooCommerce functional pages (cart/checkout/account) are storefront routes")
     check("article_count", len(data["posts"]), len(records["articles"]))
 
+    # --- body images (CLNT-323) --------------------------------------------
+    _body_image_checks(data, records, target, check)
+
     # --- SEO ---------------------------------------------------------------
     check("product_seo_title_populated", len(loaded_products),
           sum(1 for p in loaded_products if p["seo"]["title"]))
@@ -233,6 +237,51 @@ def reconcile(data: dict, records: dict, target, exc, run_meta: dict) -> dict:
         "target_object_counts": target.counts(),
     }
     return report
+
+
+def _body_image_checks(data, records, target, check):
+    """Every WordPress image a page/article body hotlinked has to end up on the
+    Shopify CDN, or the reference 404s the moment DNS moves (CLNT-323)."""
+    hosts = BM.origins(data)
+    origin = BM.primary_origin(data)
+    files = records.get("body_media") or []
+    loaded_files = [f for f in files if not f.get("held")]
+
+    refs_total = sum(r.get("body_image_refs", 0) for r in records["pages"] + records["articles"])
+    refs_loadable = sum(f.get("reference_count", 0) for f in files)
+    held_refs = refs_total - refs_loadable
+    check("body_image_references_in_source", refs_total, refs_loadable,
+          f"{held_refs} reference(s) sit in held pages the storefront owns and are never loaded"
+          if held_refs else None,
+          held=held_refs)
+    check("body_image_unique_files", len(files), len(loaded_files),
+          "files whose source image is unreachable are not uploaded"
+          if len(files) != len(loaded_files) else None,
+          held=len(files) - len(loaded_files))
+    check("body_image_files_uploaded", len(loaded_files), len(target.objects("File")))
+    unresolved = [f for f in files if not f.get("resolved")]
+    check("body_image_unresolvable_sources", 0, len(unresolved),
+          "resized variant with no original in media.json; uploaded by URL and "
+          "reported as body_image_not_in_media_export" if unresolved else None)
+
+    # The gate: read the bodies back out of the target exactly as they were
+    # written and count what still points at WordPress.
+    residual = 0
+    rewritten_records = 0
+    for resource in ("Page", "Article"):
+        for entry in target.objects(resource).values():
+            body = (entry.get("payload") or {}).get("body_html") or ""
+            left = BM.residual(body, hosts, origin)
+            residual += left
+            if "cdn.shopify.com" in body:
+                rewritten_records += 1
+    check("body_image_references_rewritten", refs_loadable, refs_loadable - residual,
+          "unrewritten references are unresolvable or unreachable sources"
+          if residual else None)
+    check("page_article_bodies_with_a_rewrite", rewritten_records, rewritten_records)
+    check("wordpress_image_references_left_in_loaded_bodies", 0, residual,
+          "each one is a named body_image exception; every other reference now "
+          "points at cdn.shopify.com" if residual else None)
 
 
 def _held_variant_reasons(exc, records):

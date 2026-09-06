@@ -1,33 +1,33 @@
 [
-  {
-    "id": 201,
-    "slug": "about-fixture",
-    "title": {
-      "rendered": "About Fixture"
-    },
-    "content": {
-      "rendered": "<p>Synthetic about page.</p>"
-    },
-    "status": "publish",
-    "date_gmt": "2026-01-05T00:00:00",
-    "link": "https://fixtures.invalid/about-fixture/",
-    "yoast_head_json": {
-      "title": "About Fixture",
-      "description": "About the fixture store."
-    }
+ {
+  "id": 201,
+  "slug": "about-fixture",
+  "title": {
+   "rendered": "About Fixture"
   },
-  {
-    "id": 202,
-    "slug": "cart",
-    "title": {
-      "rendered": "Cart"
-    },
-    "content": {
-      "rendered": ""
-    },
-    "status": "publish",
-    "date_gmt": "2026-01-05T00:00:00",
-    "link": "https://fixtures.invalid/cart/",
-    "yoast_head_json": {}
+  "content": {
+   "rendered": "<p>Synthetic about page.</p><figure><img decoding=\"async\" width=\"300\" height=\"300\" src=\"https://fixtures.invalid/wp-content/uploads/2026/01/team-tee-front-300x300.jpg\" srcset=\"https://fixtures.invalid/wp-content/uploads/2026/01/team-tee-front-300x300.jpg 300w, https://fixtures.invalid/wp-content/uploads/2026/01/team-tee-front-768x768.jpg 768w, https://fixtures.invalid/wp-content/uploads/2026/01/team-tee-front.jpg 1024w\" sizes=\"(max-width: 300px) 100vw, 300px\" alt=\"Team tee\" /></figure><p><img src=\"https://www.fixtures.invalid/wp-content/uploads/2026/01/orphan-banner-1024x512.png\" alt=\"Orphan banner\" /></p><p><a href=\"https://fixtures.invalid/wp-content/uploads/2026/01/size-guide.pdf\">Size guide (PDF)</a></p><p><a href=\"https://fixtures.invalid/about-fixture/\">A page link, not an upload</a></p>"
+  },
+  "status": "publish",
+  "date_gmt": "2026-01-05T00:00:00",
+  "link": "https://fixtures.invalid/about-fixture/",
+  "yoast_head_json": {
+   "title": "About Fixture",
+   "description": "About the fixture store."
   }
+ },
+ {
+  "id": 202,
+  "slug": "cart",
+  "title": {
+   "rendered": "Cart"
+  },
+  "content": {
+   "rendered": ""
+  },
+  "status": "publish",
+  "date_gmt": "2026-01-05T00:00:00",
+  "link": "https://fixtures.invalid/cart/",
+  "yoast_head_json": {}
+ }
 ]

@@ -68,6 +68,31 @@ once the media object is `READY`, so `finish()` polls (`_attach_deferred_variant
   HTTP 404 at the WordPress end) fail immediately without an API call. Those need the
   client to supply the file; the run's exception register names the product.
 
+### 2b. Body-image file stuck, FAILED, or unresolvable (CLNT-323)
+
+Page and article body images are uploaded to Shopify Files (`fileCreate`) before the
+pages that embed them, and the body HTML is rewritten to the CDN URL the upload produced.
+`fileCreate` is asynchronous too, so `file_urls()` polls `nodes(ids:)` until each file is
+`READY` (3-second interval, the same `MEDIA_READY_WAIT_SECONDS = 90` cap) *before* the
+first page is written.
+
+* A file Shopify reports as `FAILED` is a class 1 per-record failure (`resource: File`)
+  and never enters the ledger, so the next run re-uploads it.
+* A file still processing at the cap is **warned**, not failed: it is in the ledger with
+  its gid, and the bodies that reference it keep their WordPress URL for this run. The
+  next run finds the ledger entry, resolves the CDN URL through `file_urls()`, rewrites
+  the body and reports the page `updated`. Nothing is uploaded twice.
+* A run interrupted between the upload and the ledger flush is recovered by
+  `_find_uploaded_file()`, which matches an unclaimed file on the store by filename stem
+  rather than uploading a duplicate.
+* A source image the pipeline already knows is unreachable (`reachable: false`) is held
+  out of the load with `body_image_unreachable`, and its references stay as WordPress
+  URLs — visible in the `wordpress_image_references_left_in_loaded_bodies` reconciliation
+  check, which is the cutover gate.
+* A resized variant with no original in `media.json` is reported as
+  `body_image_not_in_media_export` (medium, client) and uploaded by its own URL; if
+  Shopify cannot fetch it the upload fails as class 1 and the client has to supply the file.
+
 ### 3. Rate limiting (`THROTTLED`)
 
 Shopify's GraphQL Admin API is a leaky bucket of cost points, not a request count.

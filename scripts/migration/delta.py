@@ -12,6 +12,7 @@ from pathlib import Path
 
 from common import read_json, rel, write_json
 from normalize import ATTRIBUTE_POLICY
+from transform import FUNCTIONAL_PAGE
 
 DELTA_MARK = " (Delta Test)"
 
@@ -35,7 +36,8 @@ def build_delta_source(source_dir: Path, delta_dir: Path) -> dict:
     rows = sorted(by_parent[product["id"]], key=lambda v: (v.get("menu_order", 0), v["id"]))
 
     changes = {"product_title": None, "variant_price": None,
-               "variant_stock": None, "variant_added": None}
+               "variant_stock": None, "variant_added": None,
+               "page_body_image": None}
 
     # 1. one title change
     product["name"] = product["name"] + DELTA_MARK
@@ -70,9 +72,65 @@ def build_delta_source(source_dir: Path, delta_dir: Path) -> dict:
     variations.append(new_variation)
     changes["variant_added"] = {"woo_id": new_id, "parent_id": product["id"]}
 
+    # 5. one page body gains a WordPress image reference (CLNT-323). The body
+    #    rewrite happens at load time, so this proves the ledger notices a
+    #    rewritten body: a new File is uploaded and exactly one Page updates.
+    changes["page_body_image"] = _add_page_body_image(delta_dir)
+
     write_json(delta_dir / "products.json", products)
     write_json(delta_dir / "variations.json", variations)
     return {"delta_dir": rel(delta_dir), "changes": changes}
+
+
+def _content(page) -> str:
+    content = page.get("content")
+    if isinstance(content, dict):
+        return content.get("rendered") or content.get("raw") or ""
+    return content or ""
+
+
+def _set_content(page, value) -> None:
+    if isinstance(page.get("content"), dict):
+        page["content"]["rendered"] = value
+    else:
+        page["content"] = value
+
+
+def _add_page_body_image(delta_dir: Path):
+    """Add one body image to the lowest-id migratable page.
+
+    The image is a media file no page or post body already references, so the
+    delta creates exactly one File and updates exactly one Page.
+    """
+    pages_path, media_path = delta_dir / "pages.json", delta_dir / "media.json"
+    if not (pages_path.exists() and media_path.exists()):
+        return None
+    pages = read_json(pages_path)
+    posts = read_json(delta_dir / "posts.json") if (delta_dir / "posts.json").exists() else []
+    media = read_json(media_path)
+
+    candidates = [
+        p for p in sorted(pages, key=lambda p: p["id"])
+        if p.get("status") == "publish"
+        and not FUNCTIONAL_PAGE.match(str(p.get("slug") or ""))
+    ]
+    if not candidates:
+        return None
+    page = candidates[0]
+
+    bodies = "".join(_content(row) for row in pages + posts)
+    url = next(
+        (m["source_url"] for m in sorted(media, key=lambda m: m.get("id") or 0)
+         if m.get("source_url") and m["source_url"] not in bodies),
+        None,
+    )
+    if not url:
+        return None
+    _set_content(page, _content(page)
+                 + f'<p><img src="{url}" alt="Delta body image" /></p>')
+    write_json(pages_path, pages)
+    return {"woo_id": page["id"], "slug": page.get("slug"),
+            "filename": url.rsplit("/", 1)[-1]}
 
 
 def _pick_product(products, by_parent):

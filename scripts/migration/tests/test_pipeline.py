@@ -225,22 +225,26 @@ class EndToEnd(unittest.TestCase):
             changed = self._run(self._args(tmp / "delta-source", store), "d2", tmp / "d2")
             diff = run_mod.diff_snapshots(before, changed["target"].snapshot())
 
-            # One new variation -> one variant plus its inventory item.
-            self.assertEqual(diff["created"], 2)
+            # One new variation -> one variant plus its inventory item, and the
+            # page that gained a body image -> one new File (CLNT-323).
+            self.assertEqual(diff["created"], 3)
             self.assertEqual({r["resource"] for r in diff["created_records"]},
-                             {"ProductVariant", "InventoryItem"})
+                             {"ProductVariant", "InventoryItem", "File"})
             self.assertEqual(diff["removed"], 0)
 
             changed_keys = {(r["resource"], r["key"]) for r in diff["changed_records"]}
             product_slug = info["changes"]["product_title"]["slug"]
             price_id = info["changes"]["variant_price"]["woo_id"]
             stock_id = info["changes"]["variant_stock"]["woo_id"]
+            page_slug = info["changes"]["page_body_image"]["slug"]
             self.assertIn(("Product", product_slug), changed_keys)
             self.assertIn(("ProductVariant", f"woo:{price_id}"), changed_keys)
             self.assertIn(("ProductVariant", f"woo:{stock_id}"), changed_keys)
             self.assertIn(("InventoryItem", f"woo:{stock_id}"), changed_keys)
+            # A rewritten body is a real change: the Page is updated in place.
+            self.assertIn(("Page", page_slug), changed_keys)
             # Nothing else moved.
-            self.assertEqual(len(changed_keys), 4)
+            self.assertEqual(len(changed_keys), 5)
 
     def test_live_target_needs_credentials_and_never_runs_by_default(self):
         """The live target must refuse to build without Admin credentials and
@@ -695,7 +699,7 @@ class LiveDefinitionUpsert(unittest.TestCase):
     the update path, and a rerun with no change costs no API call."""
 
     SKIP = ["collections", "products", "variants", "media", "variants_inventory",
-            "collection_membership", "metafields", "pages", "articles",
+            "collection_membership", "metafields", "body_media", "pages", "articles",
             "customers", "discounts"]
 
     def _load(self, store_dir, client, records):
@@ -801,6 +805,224 @@ class VariantImagePropagation(unittest.TestCase):
                 ]
             }
         self.assertEqual(transform_mod._variant_images(Ctx(), 8), {"https://x/sock.png": [{"woo_id": 1, "sku": "K-36"}]})
+
+
+# --------------------------------------------------------------------------
+# CLNT-323 - WordPress body images
+# --------------------------------------------------------------------------
+WP = "https://wp.invalid/wp-content/uploads/2026/01/"
+HOSTS = frozenset({"wp.invalid"})
+KNOWN = {
+    ("wp.invalid", "/wp-content/uploads/2026/01/hero.jpg"): WP + "hero.jpg",
+    ("wp.invalid", "/wp-content/uploads/2026/01/size guide.pdf"): WP + "size%20guide.pdf",
+}
+
+
+class BodyImageExtraction(unittest.TestCase):
+    """scan() finds every reference; resolve() collapses resized variants."""
+
+    def test_src_srcset_and_href_are_all_found(self):
+        import body_media as BM
+        html = (
+            f'<img src="{WP}hero-300x200.jpg" '
+            f'srcset="{WP}hero-300x200.jpg 300w, {WP}hero-768x512.jpg 768w, {WP}hero.jpg 1024w">'
+            f'<a href="{WP}size guide.pdf">guide</a>'
+            '<a href="https://wp.invalid/about/">not an upload</a>'
+            '<img src="https://elsewhere.invalid/wp-content/uploads/x.jpg">'
+        )
+        found = BM.scan(html, HOSTS)
+        self.assertEqual([f["attr"] for f in found],
+                         ["src", "srcset", "srcset", "srcset", "href"])
+        self.assertEqual(len(found), 5)
+
+    def test_protocol_relative_and_www_and_root_relative_forms(self):
+        import body_media as BM
+        html = (
+            f'<img src="//www.wp.invalid/wp-content/uploads/2026/01/hero.jpg">'
+            '<img src="/wp-content/uploads/2026/01/hero.jpg">'
+            f'<img src="{WP.replace("https", "http")}hero.jpg">'
+        )
+        found = BM.scan(html, HOSTS, origin="wp.invalid")
+        self.assertEqual(len(found), 3)
+        self.assertEqual({BM.canon(f["url"]) for f in found},
+                         {("wp.invalid", "/wp-content/uploads/2026/01/hero.jpg")})
+
+    def test_resized_variants_collapse_onto_the_original(self):
+        import body_media as BM
+        for variant in ("hero-300x200.jpg", "hero-1536x1024.jpg", "hero.jpg"):
+            url, resolved = BM.resolve(WP + variant, KNOWN)
+            self.assertTrue(resolved, variant)
+            self.assertEqual(url, WP + "hero.jpg")
+
+    def test_a_resized_variant_with_no_original_stays_as_written(self):
+        import body_media as BM
+        url, resolved = BM.resolve(WP + "orphan-1024x512.png", KNOWN)
+        self.assertFalse(resolved)
+        self.assertEqual(url, WP + "orphan-1024x512.png")
+
+    def test_a_dimension_like_filename_is_not_mistaken_for_a_thumbnail(self):
+        import body_media as BM
+        # No original in the library, so the URL is left exactly as written.
+        url, resolved = BM.resolve(WP + "size-chart-10x10.png", KNOWN)
+        self.assertFalse(resolved)
+        self.assertEqual(url, WP + "size-chart-10x10.png")
+
+    def test_content_type_splits_images_from_documents(self):
+        import body_media as BM
+        self.assertEqual(BM.content_type(WP + "hero.jpg"), "IMAGE")
+        self.assertEqual(BM.content_type(WP + "guide.pdf"), "FILE")
+        self.assertEqual(BM.content_type(WP + "no-extension", "image/png"), "IMAGE")
+
+
+class BodyImageRewrite(unittest.TestCase):
+    CDN = "https://cdn.shopify.com/s/files/1/1/files/hero.jpg?v=1"
+
+    def _map(self):
+        import body_media as BM
+        return {
+            BM.canon(WP + name): self.CDN
+            for name in ("hero.jpg", "hero-300x200.jpg", "hero-768x512.jpg")
+        }
+
+    def test_src_and_srcset_are_rewritten_and_the_dead_srcset_is_dropped(self):
+        import body_media as BM
+        html = (
+            f'<img src="{WP}hero-300x200.jpg" '
+            f'srcset="{WP}hero-300x200.jpg 300w, {WP}hero-768x512.jpg 768w" '
+            'sizes="(max-width: 300px) 100vw, 300px" alt="Hero">'
+        )
+        out, stats = BM.rewrite(html, self._map(), HOSTS)
+        self.assertIn(self.CDN, out)
+        self.assertNotIn("wp.invalid", out)
+        self.assertNotIn("srcset", out)
+        self.assertNotIn("sizes=", out)
+        self.assertIn('alt="Hero"', out)
+        self.assertEqual(stats, {"references": 3, "rewritten": 3, "unrewritten": 0})
+
+    def test_href_links_to_uploads_are_rewritten_too(self):
+        import body_media as BM
+        cdn = "https://cdn.shopify.com/s/files/1/1/files/guide.pdf?v=2"
+        html = f'<a href="{WP}guide.pdf">Size guide</a>'
+        out, stats = BM.rewrite(html, {BM.canon(WP + "guide.pdf"): cdn}, HOSTS)
+        self.assertEqual(out, f'<a href="{cdn}">Size guide</a>')
+        self.assertEqual(stats["rewritten"], 1)
+
+    def test_unmapped_references_are_left_alone_and_counted(self):
+        import body_media as BM
+        html = f'<img src="{WP}orphan-1024x512.png"><img src="{WP}hero.jpg">'
+        out, stats = BM.rewrite(html, self._map(), HOSTS)
+        self.assertIn(f"{WP}orphan-1024x512.png", out)
+        self.assertEqual(stats, {"references": 2, "rewritten": 1, "unrewritten": 1})
+
+    def test_nothing_else_on_the_page_is_touched(self):
+        import body_media as BM
+        html = ('<p>Visit <a href="https://wp.invalid/about/">about</a></p>'
+                '<img src="https://elsewhere.invalid/photo.jpg">')
+        out, stats = BM.rewrite(html, self._map(), HOSTS)
+        self.assertEqual(out, html)
+        self.assertEqual(stats["references"], 0)
+
+    def test_rewrite_is_stable_when_applied_twice(self):
+        import body_media as BM
+        html = f'<img src="{WP}hero-300x200.jpg" srcset="{WP}hero.jpg 1024w">'
+        once, _ = BM.rewrite(html, self._map(), HOSTS)
+        twice, stats = BM.rewrite(once, self._map(), HOSTS)
+        self.assertEqual(once, twice)
+        self.assertEqual(stats["references"], 0)
+
+
+class BodyImagePipeline(unittest.TestCase):
+    """Transform, load and rerun on the fixture snapshot."""
+
+    def setUp(self):
+        self.data, self.records, self.exc = build_records()
+        self.files = self.records["body_media"]
+
+    def test_one_file_record_per_unique_original(self):
+        names = sorted(f["filename"] for f in self.files)
+        self.assertEqual(names, ["orphan-banner-1024x512.png", "size-guide.pdf",
+                                 "team-tee-front.jpg"])
+        tee = [f for f in self.files if f["filename"] == "team-tee-front.jpg"][0]
+        # src + three srcset candidates, collapsed onto one upload.
+        self.assertEqual(tee["reference_count"], 4)
+        self.assertEqual(len(tee["variants"]), 2)
+        self.assertTrue(tee["resolved"])
+        self.assertEqual(tee["content_type"], "IMAGE")
+
+    def test_a_pdf_link_is_a_generic_file_not_an_image(self):
+        pdf = [f for f in self.files if f["filename"] == "size-guide.pdf"][0]
+        self.assertEqual(pdf["content_type"], "FILE")
+
+    def test_an_image_with_no_original_is_reported_but_still_uploaded(self):
+        orphan = [f for f in self.files if f["filename"].startswith("orphan")][0]
+        self.assertFalse(orphan["resolved"])
+        self.assertFalse(orphan["held"])
+        self.assertIn("body_image_not_in_media_export",
+                      {row["code"] for row in self.exc.rows})
+
+    def test_held_pages_contribute_no_uploads(self):
+        cart = [p for p in self.records["pages"] if p["handle"] == "cart"][0]
+        self.assertTrue(cart["held"])
+        self.assertEqual(cart["body_image_sources"], [])
+
+    def test_load_rewrites_the_body_and_a_rerun_reuses_the_files(self):
+        import loader
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Path(tmp) / "store"
+            target = loader.FakeShopifyTarget(store)
+            first = loader.load(self.records, target, ExceptionCollector())
+            self.assertEqual(first["body_images"]["records_rewritten"], 1)
+            self.assertEqual(first["body_images"]["references"], 6)
+            self.assertEqual(first["body_images"]["rewritten"], 6)
+            self.assertEqual(len(target.objects("File")), 3)
+
+            body = target.objects("Page")["about-fixture"]["payload"]["body_html"]
+            self.assertNotIn("wp-content/uploads", body)
+            self.assertIn("cdn.shopify.com", body)
+            # The page link that is not an upload survives untouched.
+            self.assertIn("https://fixtures.invalid/about-fixture/", body)
+
+            # Rerun against the same ledger: no new files, no page update.
+            again = loader.FakeShopifyTarget(store)
+            second = loader.load(self.records, again, ExceptionCollector())
+            self.assertEqual(second["stats"]["created"], 0)
+            self.assertEqual(second["stats"]["updated"], 0)
+            self.assertEqual(len(again.objects("File")), 3)
+            self.assertEqual(again.objects("Page")["about-fixture"]["payload"]["body_html"], body)
+
+    def test_usage_metadata_stays_out_of_the_ledger_payload(self):
+        """Where a file is used must not restamp the file's checksum."""
+        import loader
+        with tempfile.TemporaryDirectory() as tmp:
+            target = loader.FakeShopifyTarget(Path(tmp) / "store")
+            loader.load(self.records, target, ExceptionCollector())
+            payload = next(iter(target.objects("File").values()))["payload"]
+            for field in ("variants", "references", "reference_count"):
+                self.assertNotIn(field, payload)
+            page = target.objects("Page")["about-fixture"]["payload"]
+            for field in ("body_image_refs", "body_image_sources"):
+                self.assertNotIn(field, page)
+
+    def test_reconciliation_reports_the_body_image_counts(self):
+        import loader
+        import reconcile as reconcile_mod
+        with tempfile.TemporaryDirectory() as tmp:
+            target = loader.FakeShopifyTarget(Path(tmp) / "store")
+            loader.load(self.records, target, ExceptionCollector())
+            report = reconcile_mod.reconcile(
+                self.data, self.records, target, self.exc,
+                {"run_id": "t", "generated_at": "now", "source_snapshot": "s",
+                 "source_dir": ".", "target": "fake", "shopify_api_version": "2026-07",
+                 "script_commit": "x"},
+            )
+            checks = {c["check"]: c for c in report["checks"]}
+            self.assertEqual(checks["body_image_unique_files"]["source"], 3)
+            self.assertEqual(checks["body_image_files_uploaded"]["target"], 3)
+            self.assertEqual(checks["body_image_unresolvable_sources"]["target"], 1)
+            self.assertEqual(
+                checks["wordpress_image_references_left_in_loaded_bodies"]["target"], 0)
+            self.assertEqual(
+                checks["wordpress_image_references_left_in_loaded_bodies"]["status"], "match")
 
 
 if __name__ == "__main__":

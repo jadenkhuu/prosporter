@@ -16,6 +16,7 @@ import json
 import re
 from collections import defaultdict
 
+import body_media as BM
 import normalize as N
 from common import (
     checksum,
@@ -93,6 +94,7 @@ def transform(data: dict, exc) -> dict:
         "metafields": [],
         "pages": [],
         "articles": [],
+        "body_media": [],
         "customers": [],
         "discounts": [],
         "id_map": [],
@@ -101,6 +103,7 @@ def transform(data: dict, exc) -> dict:
     _collections(ctx, records)
     _pages(ctx, records)
     _articles(ctx, records)
+    _body_media(ctx, records)
     _customers(ctx, records)
     _discounts(ctx, records)
     _id_map(records, snapshot)
@@ -118,6 +121,17 @@ class _Context:
         for rows in self.variations_by_parent.values():
             rows.sort(key=lambda v: (v.get("menu_order", 0), v.get("id", 0)))
         self.media_by_id = {m.get("id"): m for m in data["media"]}
+        # CLNT-323: page/article bodies hotlink the WordPress origin. The hosts
+        # are derived from the snapshot, never hard-coded, so the fixtures and
+        # the real export both work.
+        self.wp_hosts = BM.origins(data)
+        self.wp_origin = BM.primary_origin(data)
+        self.known_media = BM.known_index(data.get("media"))
+        self.media_by_url = {}
+        for row in data.get("media") or []:
+            url = row.get("source_url")
+            if url:
+                self.media_by_url.setdefault(BM.canon(url), row)
         self.reachable = {
             row.get("url"): row.get("status") for row in data.get("media_head") or []
         }
@@ -917,6 +931,99 @@ def _articles(ctx, records):
             "held": False,
             "source": ctx.source(woo_id, "post"),
         })
+
+
+# --------------------------------------------------------------------------
+# Body images (CLNT-323)
+# --------------------------------------------------------------------------
+def _body_media(ctx, records):
+    """One File record per unique image a page or article body hotlinks.
+
+    WordPress bodies reference the same photo many times over: a ``src`` plus a
+    ``srcset`` of five ``-WIDTHxHEIGHT`` thumbnails is six references to one
+    original. Every reference is resolved back to the original file in
+    ``media.json`` so the load stage uploads each file **once**; the raw
+    spellings ride along in ``variants`` so the load-stage rewrite can find the
+    upload from whichever URL the HTML actually used.
+
+    Held pages (WooCommerce functional routes the storefront owns) are scanned
+    for the count but contribute no uploads: they are never loaded.
+    """
+    hosts, origin = ctx.wp_hosts, ctx.wp_origin
+    by_source, order = {}, []
+    for record_type, rows in (("page", records["pages"]), ("article", records["articles"])):
+        for row in rows:
+            refs = BM.scan(row["body_html"], hosts, origin)
+            row["body_image_refs"] = len(refs)
+            row["body_image_sources"] = []
+            if not refs or row.get("held"):
+                continue
+            sources = []
+            for ref in refs:
+                url, resolved = BM.resolve(ref["url"], ctx.known_media)
+                entry = by_source.get(url)
+                if entry is None:
+                    entry = _body_media_record(ctx, url, resolved)
+                    by_source[url] = entry
+                    order.append(url)
+                if ref["url"] != url and ref["url"] not in entry["variants"]:
+                    entry["variants"].append(ref["url"])
+                entry["reference_count"] += 1
+                if url not in sources:
+                    sources.append(url)
+            row["body_image_sources"] = sources
+            for url in sources:
+                ref_key = f"{record_type}:{row['handle']}"
+                if ref_key not in by_source[url]["references"]:
+                    by_source[url]["references"].append(ref_key)
+
+    for url in order:
+        entry = by_source[url]
+        entry["variants"].sort()
+        entry["references"].sort()
+        if not entry["resolved"]:
+            ctx.exc.add(
+                record_type="body_image", record_id=None, record_ref=BM.filename(url),
+                stage=STAGE, severity="medium", code="body_image_not_in_media_export",
+                message="body image is not in media.json (no original for the resized "
+                        "variant); it is still uploaded by URL, and stays a WordPress "
+                        "link if Shopify cannot fetch it",
+                owner=OWNER_CLIENT, retry_status="needs-decision",
+                detail={"references": entry["references"]},
+            )
+        if entry["reachable"] is False:
+            ctx.exc.add(
+                record_type="body_image", record_id=entry["woo_media_id"],
+                record_ref=BM.filename(url), stage=STAGE, severity="high",
+                code="body_image_unreachable",
+                message=f"body image returned HTTP {entry['http_status']} at the source; "
+                        "not uploaded, so the body keeps the WordPress URL",
+                owner=OWNER_AGENCY, retry_status="auto-retryable",
+                detail={"references": entry["references"]},
+            )
+        records["body_media"].append(entry)
+
+
+def _body_media_record(ctx, url, resolved):
+    media_row = ctx.media_by_url.get(BM.canon(url)) or {}
+    status = ctx.reachable.get(url)
+    held = status is not None and status != 200
+    return {
+        "source_url": url,
+        "filename": BM.filename(url),
+        "alt": clean_text(media_row.get("alt_text")),
+        "content_type": BM.content_type(url, media_row.get("mime_type") or ""),
+        "resolved": resolved,
+        "woo_media_id": media_row.get("id"),
+        "reachable": status == 200 if status is not None else None,
+        "http_status": status,
+        "variants": [],
+        "references": [],
+        "reference_count": 0,
+        "held": held,
+        "held_reasons": ["body_image_unreachable"] if held else [],
+        "source": ctx.source(media_row.get("id"), "body_image"),
+    }
 
 
 # --------------------------------------------------------------------------

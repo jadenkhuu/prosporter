@@ -21,7 +21,7 @@ real customer or catalog data is written under `exports/` (git-ignored) and neve
 | Stage | What it does | Output |
 |---|---|---|
 | `extract` | Reads `exports/*.json`, checks every required entity is present, records the snapshot time from `exports/_manifest.json`. No network. | `source-summary.json` |
-| `transform` | Applies execution-plan section 7 normalization and the approved IA, emits Shopify-shaped JSONL. | one `.jsonl` per record type |
+| `transform` | Applies execution-plan section 7 normalization and the approved IA, emits Shopify-shaped JSONL. Also extracts the WordPress images embedded in page/article bodies (CLNT-323). | one `.jsonl` per record type |
 | `load` | Upserts every record into the target in the plan's load order. | `load-result.json`, the fake store, `mapping.json` |
 | `reconcile` | Field-level source-vs-target comparison for every item in the plan's dry-run reconciliation list. | `reconciliation.json`, `docs/migration/reconciliation-latest.md`, `docs/migration/exception-register.csv` |
 | `all` | extract → transform → load → reconcile in one process. | all of the above plus `run-manifest.json` |
@@ -66,7 +66,7 @@ Flags: `--source` (export directory, default `exports/`), `--target` (`fake` def
 `--reset-store` (load from scratch; fake target only), `--no-docs` (skip the committed reports),
 `--fail-on-critical` (exit 2 when unresolved critical exceptions remain — the quality gate),
 `--live` (required by `--target shopify` and by the publish stage), `--skip-types`,
-`--only-products`. Publish-stage only: `--publication`, `--activate-published`, `--dry-run`.
+`--only-types` (load these record types and nothing else), `--only-products`. Publish-stage only: `--publication`, `--activate-published`, `--dry-run`.
 
 Python 3.11+, standard library only. Deterministic: the same inputs produce byte-identical
 JSONL, so two runs can be diffed.
@@ -79,7 +79,8 @@ exports/migration/
     run-manifest.json        run id, pipeline commit, source snapshot, API version, target, counts
     source-summary.json      source-side counts
     products.jsonl  variants.jsonl  media.jsonl  collections.jsonl  metafields.jsonl
-    metafield_definitions.jsonl  pages.jsonl  articles.jsonl  customers.jsonl
+    metafield_definitions.jsonl  pages.jsonl  articles.jsonl  body_media.jsonl
+    customers.jsonl
     discounts.jsonl  id_map.jsonl
     load-result.json         per-record create/update/unchanged outcome and destination id
     exceptions.jsonl         the full structured error set for the run
@@ -159,6 +160,7 @@ resource:
 | Product, Collection, Page, Article | `handle` | stable and human-checkable |
 | ProductVariant, InventoryItem | `woo:<variation id>` | **SKUs are not unique in the source** (6 SKUs are shared by up to 19 variations), so SKU cannot be the identity |
 | MediaImage | `<product handle>:<original url>` | one product can reuse an image |
+| File (body image) | `<original url>` | one file, however many pages embed it |
 | Metafield | `<owner>:<handle>:<namespace>.<key>` | |
 | Customer | `email` | |
 | DiscountCodeNode | `code` | |
@@ -199,7 +201,9 @@ class Target:
 `upsert` must be idempotent: the same key with the same payload must not create a second
 object and must report `unchanged`. `loader.LOAD_ORDER` encodes the plan's load order
 (definitions and empty collections → products/options → variants → media → inventory →
-collection membership, tags and metafields → pages → articles → customers → discounts).
+collection membership, tags and metafields → body-image files → pages → articles →
+customers → discounts). Body-image files come before pages on purpose: the page body is
+rewritten to the CDN URLs those uploads produced.
 Redirects (step 9) belong to the redirects workstream. Final publication to a sales
 channel (step 10) is never part of a load: it is the separate `run.py publish` stage,
 run after QA (see "Publish stage" below).
@@ -276,6 +280,10 @@ python3 scripts/migration/run.py all --target shopify --live \
 python3 scripts/migration/run.py all --target shopify --live \
     --store exports/migration/live-store --no-docs \
     --skip-types collections,products,variants,media,variants_inventory,collection_membership,metafields,pages,articles,customers,discounts
+# content only: body-image files, pages and articles (CLNT-323 re-run)
+python3 scripts/migration/run.py all --target shopify --live \
+    --store exports/migration/live-store --no-docs \
+    --only-types body_media,pages,articles
 # staging reset: delete everything the ledger created (dry run without --yes)
 python3 scripts/migration/shopify_target.py purge --store exports/migration/live-store --yes
 # QA only: make one product visible to the Headless storefront
@@ -286,8 +294,8 @@ python3 scripts/migration/shopify_admin.py publish --handle nago --publication "
 live ledger must not be the fake-store directory. The ledger records the store domain and
 refuses to run against a different store.
 
-`--skip-types` takes record types, and `loader.LOAD_ORDER` has exactly twelve; naming the
-eleven that are not `metafield_definitions` (the command above) is the supported way to
+`--skip-types` takes record types, and `loader.LOAD_ORDER` has exactly thirteen; naming the
+twelve that are not `metafield_definitions` (the command above) is the supported way to
 apply a definition-only change: the loader visits no other resource, so no product,
 variant, metafield or customer call is made. Definitions are idempotent against the ledger
 checksum, so a rerun with nothing changed reports `unchanged` and costs zero API calls.
@@ -307,7 +315,90 @@ loaded values with the definitions. It is a staging reset only.
 | Discounts | `customerSelection` replaced by `context: {all: ALL}` | as documented; category-restricted, excluded-product and free-shipping-plus-value coupons are failed with a decision message |
 | Product media | `productUpdate(media:[...])`; variant images via `productVariantsBulkUpdate(mediaId)` once media is `READY` | one image per call, id found by diffing the product's media list; variant images attached in `finish()` after polling (90 s cap) |
 | Page/article SEO | no `seo` on page/article inputs | `global.title_tag` / `global.description_tag` metafields |
+| Body images | `fileCreate` is async: `image { url }` is null until `fileStatus` is `READY` | files upload first, then `file_urls()` polls `nodes(ids:)` in batches (90 s cap) before the first page is written |
 | Metafield definitions | `MetafieldDefinitionInput` and `MetafieldDefinitionUpdateInput` both carry `description`, `pin: Boolean` and `validations: [MetafieldDefinitionValidationInput!]`; only the create input takes `type` | one `metafieldDefinitionCreate` or `metafieldDefinitionUpdate` per definition with pin, description and validations inline — `metafieldDefinitionPin` / `metafieldDefinitionUnpin` are never needed |
+
+### Body-image rewrite (CLNT-323)
+
+Migrated page and article bodies came straight out of WordPress, so they still pointed
+at `https://prosporter.com.au/wp-content/uploads/...`. At cutover DNS moves that host to
+Vercel and every one of those images 404s. The pipeline now moves the files to Shopify
+and rewrites the HTML.
+
+`scripts/migration/body_media.py` is the whole rule set — pure string work, no network,
+no Shopify dependency — and it is used by all three stages that need it.
+
+**Transform.** Every non-held page and article body is scanned for WordPress upload
+references: `src`, the lazy-loader `data-src` variants, **every `srcset` candidate**, and
+`<a href>` links into `wp-content/uploads` (size-guide PDFs and the like). The hosts are
+*derived*, never hard-coded: the export manifest's `base` plus every host in
+`media.json`, with `www.` normalised away, so `prosporter.com.au` and
+`www.prosporter.com.au` are one origin and the synthetic fixtures work unchanged.
+
+Each reference is then resolved back to one file:
+
+* a `-WIDTHxHEIGHT` resized variant (`hero-768x512.jpg`) collapses onto the original
+  (`hero.jpg`) **when the original is in `media.json`** — so the six references a single
+  WordPress figure emits become one upload;
+* when there is no original in `media.json` the URL is kept exactly as written, uploaded
+  by URL anyway, and reported as `body_image_not_in_media_export` (medium, client) so the
+  gap is visible rather than papered over;
+* a source `media_head` status other than 200 holds the file out of the load
+  (`body_image_unreachable`) and its references keep the WordPress URL.
+
+The result is one `body_media.jsonl` record per unique file, carrying the raw spellings
+that collapsed onto it in `variants`, and `content_type` (`IMAGE`, or `FILE` for PDFs).
+
+**Load.** `body_media` loads as the Shopify resource `File` — generic **Shopify Files**
+(Content → Files), not product media, because these images belong to page content and to
+no product gallery. The live target uses `fileCreate`, then `file_urls()` polls
+`nodes(ids:)` until each file is `READY` and has a CDN URL; the fake target synthesises a
+deterministic `cdn.shopify.com` URL from the object's gid so the dry run is byte-stable.
+The source-URL → CDN-URL map is stored in the ledger (`store.json` → `file_urls`), so a
+rerun uploads nothing and re-derives the same map.
+
+The page/article body is rewritten **at load time**, immediately before the
+create-or-update — not in the transform, because the CDN URL only exists once the file is
+uploaded, and because the ledger checksum must be taken over the body Shopify actually
+receives. That is what makes it idempotent: a rerun that resolves the same URLs produces
+a byte-identical body and reports `unchanged`, and a body that really moved reports
+`updated`. A rewritten `<img>` loses its `srcset`/`sizes` when every candidate collapsed
+onto the same file — Shopify serves one original, and a srcset listing that URL at five
+widths would be a lie. Nothing outside `wp-content/uploads` is touched: ordinary
+`prosporter.com.au` page links survive, because after the DNS move the Next.js storefront
+serves them.
+
+Usage metadata (`variants`, `references`, `reference_count` on the file;
+`body_image_refs`, `body_image_sources` on the page) stays out of the ledger payload, so
+editing one page never restamps a file's checksum.
+
+**Reconcile.** Six checks land in `reconciliation-latest.md`:
+
+| Check | Meaning |
+|---|---|
+| `body_image_references_in_source` | references found in bodies vs. references in bodies that are actually loaded (held functional pages carry the rest) |
+| `body_image_unique_files` | unique files vs. files not held for unreachability |
+| `body_image_files_uploaded` | files expected vs. `File` objects in the target |
+| `body_image_unresolvable_sources` | resized variants with no original in `media.json` |
+| `body_image_references_rewritten` | loadable references vs. references now on `cdn.shopify.com` |
+| `wordpress_image_references_left_in_loaded_bodies` | **the gate: must be 0** — counted by re-reading the bodies out of the target |
+
+`page_article_bodies_with_a_rewrite` reports how many page/article bodies changed.
+
+Dry run on the 2026-09-05 snapshot (`run.py all --reset-store --no-docs`): 579 references
+across 14 page bodies (0 articles, 0 `<a href>` links to uploads), 56 of them inside the
+held WooCommerce functional pages; 523 loadable references collapsing to **46 unique
+files**, all 46 uploaded, all 523 rewritten, 0 WordPress upload references left in any
+loaded body. 7 of the 46 are resized variants with no original in `media.json`. A rerun
+reports 2867 unchanged / 0 created / 0 updated.
+
+`run.py prove` exercises the delta too: `delta.py` adds one `<img>` to the lowest-id
+migratable page as its fifth controlled change, and the proof shows exactly one new
+`File` and exactly one updated `Page`.
+
+Once a live content load is clean, `https://prosporter.com.au` and
+`https://www.prosporter.com.au` can be removed from `img-src` in
+`src/lib/security-headers.ts` — that edit belongs to the storefront workstream.
 
 ### Publish stage (`run.py publish`)
 

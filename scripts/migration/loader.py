@@ -15,8 +15,10 @@ The load order follows execution plan, workstream 3, "Load order".
 """
 from __future__ import annotations
 
+import urllib.parse
 from pathlib import Path
 
+import body_media as BM
 from common import SHOPIFY_API_VERSION, checksum, read_json, write_json
 from errors import OWNER_AGENCY
 
@@ -32,6 +34,9 @@ LOAD_ORDER = [
     ("variants_inventory", "InventoryItem", "woo_variation_id"),
     ("collection_membership", "CollectionMembership", "handle"),
     ("metafields", "Metafield", "metafield_key"),
+    # CLNT-323: body images upload before the pages that reference them, so the
+    # page body can be rewritten to the CDN URL in the same run.
+    ("body_media", "File", "source_url"),
     ("pages", "Page", "handle"),
     ("articles", "Article", "handle"),
     ("customers", "Customer", "email"),
@@ -56,7 +61,19 @@ def identity_key(record_type: str, record: dict) -> str:
         return record["email"]
     if record_type == "discounts":
         return record["code"]
+    if record_type == "body_media":
+        return record["source_url"]
     return record["handle"]
+
+
+# Record fields that stay out of the ledger payload. They describe how a record
+# is used rather than what it is, so a change elsewhere must not restamp the
+# object's checksum and trigger a pointless update.
+PAYLOAD_EXCLUDED = {
+    "body_media": ("variants", "references", "reference_count"),
+    "pages": ("body_image_refs", "body_image_sources"),
+    "articles": ("body_image_refs", "body_image_sources"),
+}
 
 
 class Target:
@@ -149,6 +166,25 @@ class FakeShopifyTarget(Target):
             },
         })
 
+    # ------------------------------------------------------------ body images
+    def file_urls(self) -> dict:
+        """source URL -> destination CDN URL for every uploaded generic File.
+
+        The dry run synthesises a stable cdn.shopify.com URL from the file's
+        assigned gid, so the rewritten body HTML is deterministic and a rerun
+        produces byte-identical output. The live target overrides this and
+        returns the URLs Shopify actually assigned.
+        """
+        urls = self.state.setdefault("file_urls", {})
+        for key, entry in self.state["objects"].get("File", {}).items():
+            if key not in urls:
+                serial = entry["id"].rsplit("/", 1)[-1]
+                name = urllib.parse.quote(BM.filename(key))
+                urls[key] = (
+                    f"https://cdn.shopify.com/s/files/1/0000/0000/files/{name}?v={int(serial)}"
+                )
+        return urls
+
     def counts(self) -> dict:
         return {
             resource: len(objects)
@@ -227,12 +263,21 @@ def load(records: dict, target: Target, exc, skip_types=(), only_products=None, 
     skip = set(skip_types or ())
     only = set(only_products) if only_products else None
     allowed = set(only_types) if only_types else None
+    # CLNT-323: filled in once the File records have been uploaded, just before
+    # the first page is written.
+    body_hosts = _body_image_hosts(records)
+    body_map: dict | None = None
+    body_stats = {"references": 0, "rewritten": 0, "unrewritten": 0, "records_rewritten": 0}
     for record_type, resource, _key in LOAD_ORDER:
         if record_type in skip or (allowed is not None and record_type not in allowed):
             continue
+        if record_type in BODY_TYPES and body_map is None:
+            body_map = _body_image_map(records, target)
         for payload, key in _payloads(record_type, records, exc):
             if payload is None or not _selected(record_type, payload, only):
                 continue
+            if record_type in BODY_TYPES:
+                _rewrite_body(payload, body_map or {}, body_hosts, body_stats)
             gid, outcome = target.upsert(resource, key, payload)
             if outcome == "failed":
                 exc.add(
@@ -259,7 +304,64 @@ def load(records: dict, target: Target, exc, skip_types=(), only_products=None, 
         "stats": dict(target.stats) if hasattr(target, "stats") else {},
         "per_resource": getattr(target, "per_resource", {}),
         "object_counts": target.counts(),
+        "body_images": body_stats,
     }
+
+
+# --------------------------------------------------------------------------
+# Body-image rewrite (CLNT-323)
+# --------------------------------------------------------------------------
+BODY_TYPES = ("pages", "articles")
+
+
+def _body_image_hosts(records):
+    """The WordPress hosts this run's body images came from."""
+    hosts = set()
+    for record in records.get("body_media") or []:
+        for url in [record["source_url"], *(record.get("variants") or [])]:
+            hosts.add(BM.host_of(url))
+    hosts.discard("")
+    return frozenset(hosts)
+
+
+def _body_image_map(records, target):
+    """canon(source URL) -> Shopify CDN URL, for every spelling of every file.
+
+    Reads the destination URLs back from the target, which reads them from its
+    ledger, so a rerun reuses the files an earlier run uploaded and re-derives
+    exactly the same rewritten body.
+    """
+    urls = target.file_urls() if hasattr(target, "file_urls") else {}
+    mapping = {}
+    for record in records.get("body_media") or []:
+        cdn = urls.get(record["source_url"])
+        if not cdn:
+            continue
+        for url in [record["source_url"], *(record.get("variants") or [])]:
+            mapping[BM.canon(url)] = cdn
+    return mapping
+
+
+def _rewrite_body(payload, body_map, hosts, stats):
+    """Rewrite a page/article body in place, before the upsert sees it.
+
+    Doing it here rather than in the transform is deliberate: the CDN URL only
+    exists once the file has been uploaded, and the ledger checksum must be
+    taken over the body Shopify actually receives, so a rerun that resolves the
+    same URLs reports ``unchanged`` and a body that really moved reports
+    ``updated``.
+    """
+    body = payload.get("body_html")
+    if not body or not hosts:
+        return payload
+    new_body, counts = BM.rewrite(body, body_map, hosts)
+    stats["references"] += counts["references"]
+    stats["rewritten"] += counts["rewritten"]
+    stats["unrewritten"] += counts["unrewritten"]
+    if counts["rewritten"]:
+        stats["records_rewritten"] += 1
+        payload["body_html"] = new_body
+    return payload
 
 
 def _selected(record_type, payload, only):
@@ -335,5 +437,6 @@ def _payloads(record_type, records, exc):
                 detail={"reasons": record.get("held_reasons", [])},
             )
             continue
-        payload = {k: v for k, v in record.items() if k not in ("held", "held_reasons")}
+        dropped = ("held", "held_reasons") + PAYLOAD_EXCLUDED.get(record_type, ())
+        payload = {k: v for k, v in record.items() if k not in dropped}
         yield payload, identity_key(record_type, record)

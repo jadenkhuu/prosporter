@@ -36,6 +36,7 @@ RECORD_TYPES = [
     "metafields",
     "pages",
     "articles",
+    "body_media",
     "customers",
     "discounts",
     "id_map",

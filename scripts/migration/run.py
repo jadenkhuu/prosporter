@@ -165,11 +165,17 @@ def stage_load(records, exc, args, run_dir):
         "stats": result["stats"],
         "per_resource": result["per_resource"],
         "object_counts": result["object_counts"],
+        "body_images": result["body_images"],
         "results": result["results"],
     })
     stats = result["stats"]
     print(f"[load] created={stats['created']} updated={stats['updated']} "
           f"unchanged={stats['unchanged']} failed={stats.get('failed', 0)} -> {store_dir}")
+    body = result["body_images"]
+    if body["references"]:
+        print(f"[load] body images: {body['references']} references in "
+              f"{body['records_rewritten']} page/article bodies, {body['rewritten']} rewritten "
+              f"to cdn.shopify.com, {body['unrewritten']} left as WordPress URLs")
     return target, result
 
 
@@ -265,6 +271,7 @@ def run_all(args, run_id, run_dir, print_header=True):
             "store_dir": rel(Path(args.store) if args.store else DEFAULT_STORE),
             "record_counts": {rt: len(records[rt]) for rt in RECORD_TYPES},
             "load_stats": load_result["stats"],
+            "body_images": load_result["body_images"],
             "exceptions_by_severity": exc.by_severity(),
             "reconciliation": report["summary"],
         },
@@ -395,7 +402,7 @@ def write_proof_doc(proof: dict) -> Path:
         "## 2. Controlled delta",
         "",
         "`exports/migration/delta-source/` is a copy of the source snapshot with exactly",
-        "four changes. Only the affected records may move.",
+        "five changes. Only the affected records may move.",
         "",
         "| Change | Source id | From | To |",
         "|---|---|---|---|",
@@ -403,6 +410,14 @@ def write_proof_doc(proof: dict) -> Path:
         f"| Variant price | {changes['variant_price']['woo_id']} | {changes['variant_price']['from']} | {changes['variant_price']['to']} |",
         f"| Variant stock | {changes['variant_stock']['woo_id']} | {changes['variant_stock']['from']} | {changes['variant_stock']['to']} |",
         f"| Added variation | {changes['variant_added']['woo_id']} | - | new option value \"Delta\" |",
+    ]
+    body_image = changes.get("page_body_image")
+    if body_image:
+        lines.append(
+            f"| Page body image | {body_image['woo_id']} (`{body_image['slug']}`) | - "
+            f"| `<img>` referencing `{body_image['filename']}` |"
+        )
+    lines += [
         "",
         "| Measure | Value |",
         "|---|---:|",

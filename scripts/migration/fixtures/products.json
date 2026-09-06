@@ -57,7 +57,7 @@
     "images": [
       {
         "id": 9101,
-        "src": "https://fixtures.invalid/img/team-tee-front.jpg",
+        "src": "https://fixtures.invalid/wp-content/uploads/2026/01/team-tee-front.jpg",
         "alt": "Fixture team tee front",
         "name": "team-tee-front.jpg"
       }
@@ -129,7 +129,7 @@
     "images": [
       {
         "id": 9102,
-        "src": "https://fixtures.invalid/img/beach-shorts.jpg",
+        "src": "https://fixtures.invalid/wp-content/uploads/2026/01/beach-shorts.jpg",
         "alt": "",
         "name": "beach-shorts.jpg"
       }
@@ -191,7 +191,7 @@
     "images": [
       {
         "id": 9103,
-        "src": "https://fixtures.invalid/img/socks.jpg",
+        "src": "https://fixtures.invalid/wp-content/uploads/2026/01/socks.jpg",
         "alt": "Fixture socks",
         "name": "socks.jpg"
       }
@@ -293,7 +293,7 @@
     "images": [
       {
         "id": 9104,
-        "src": "https://fixtures.invalid/img/jersey.jpg",
+        "src": "https://fixtures.invalid/wp-content/uploads/2026/01/jersey.jpg",
         "alt": "Fixture jersey",
         "name": "jersey.jpg"
       }

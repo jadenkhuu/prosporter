@@ -24,6 +24,35 @@ Two passes through the same runbook:
 | 6 | Dry run clean | `run.py all --fail-on-critical` exits 0 |
 | 7 | Client decisions closed | see the checklist below |
 | 8 | The ledger directory is the right one | never `exports/migration/fake-store`; the ledger records its store domain and refuses another |
+| 9 | No page or article body references `prosporter.com.au` uploads | see below — the dry run's `wordpress_image_references_left_in_loaded_bodies` check is 0, and the crawl finds no `wp-content/uploads` link |
+
+**Precondition 9 — body images (CLNT-323).** At cutover DNS moves
+`prosporter.com.au` to Vercel, so every `https://prosporter.com.au/wp-content/uploads/...`
+image left inside a migrated page or article body 404s. The content load uploads each
+one to Shopify Files and rewrites the body; this check confirms it happened.
+
+```bash
+# 1. the pipeline's own gate: must print 0
+python3 -c "import json;r=json.load(open('exports/migration/$RUN/reconciliation.json'));print([c['target'] for c in r['checks'] if c['check']=='wordpress_image_references_left_in_loaded_bodies'])"
+
+# 2. the same question asked of the live store, after the storefront is up
+node scripts/qa/crawl.mjs   # no wp-content/uploads URL may appear in any page/article body
+```
+
+If `scripts/qa/crawl.mjs` is not wired up yet, grep the Storefront pages query result
+instead — no GROQ, no CMS, just the Shopify Storefront API:
+
+```bash
+curl -s -X POST "https://$SHOPIFY_STORE_DOMAIN/api/2026-07/graphql.json"   -H "X-Shopify-Storefront-Access-Token: $SHOPIFY_STOREFRONT_TOKEN"   -H 'Content-Type: application/json'   -d '{"query":"{ pages(first:100){ nodes{ handle body } } articles(first:100){ nodes{ handle contentHtml } } }"}'   | grep -o 'prosporter\.com\.au/wp-content/uploads[^"]*' | sort -u
+```
+
+Expect no output. Plain `prosporter.com.au` **page** links (`/about/`, `/faq/`) are not
+a failure — after the DNS move those resolve to the Next.js storefront. Only
+`wp-content/uploads` references are fatal, because nothing serves them.
+
+Once the live run is clean, `https://prosporter.com.au` and
+`https://www.prosporter.com.au` can be dropped from `img-src` in
+`src/lib/security-headers.ts` (owned by the storefront workstream, not this pipeline).
 
 **Client decisions that must be closed before a cutover load** (from
 `README.md` → "Cutover-relevant open decisions", tracked in

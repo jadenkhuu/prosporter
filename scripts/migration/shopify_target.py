@@ -115,6 +115,8 @@ class ShopifyAdminTarget(FakeShopifyTarget):
         self.aux = self.state["aux"]
         self.aux.setdefault("variant_inventory_item", {})  # variant gid -> inventory item gid
         self.aux.setdefault("created_blogs", {})            # handle -> gid (only blogs we created)
+        self.state.setdefault("file_urls", {})               # source url -> cdn url (CLNT-323)
+        self._pending_files: dict[str, str] = {}             # file gid -> source url
         self.stats["failed"] = 0
         self.failures: list[dict] = []
         self.warnings: list[dict] = []  # record loaded, but with a caveat worth surfacing
@@ -201,6 +203,7 @@ class ShopifyAdminTarget(FakeShopifyTarget):
             "InventoryItem": self._inventory,
             "CollectionMembership": self._membership,
             "Metafield": self._metafield,
+            "File": self._file,
             "Page": self._page,
             "Article": self._article,
             "Customer": self._customer,
@@ -759,6 +762,129 @@ class ShopifyAdminTarget(FakeShopifyTarget):
             "metafieldsSet",
         )
         return result["metafields"][0]["id"]
+
+    # ----------------------------------------------------- body images (files)
+    def _file(self, key, p, existing):
+        """Upload one page/article body image to Shopify Files.
+
+        Deliberately *not* product media: these images belong to page content,
+        not to a product gallery, so they go through ``fileCreate`` and land in
+        Content -> Files. The destination CDN URL is what the body HTML is
+        rewritten to, so it is recorded in the ledger against the source URL and
+        a rerun reuses it without uploading anything.
+        """
+        if p.get("reachable") is False:
+            raise ShopifyAdminError(f"source image unreachable (HTTP {p.get('http_status')})")
+        if existing:
+            if p.get("alt"):
+                self.client.mutate(
+                    "mutation($f:[FileUpdateInput!]!){ fileUpdate(files:$f){ files{ id }"
+                    " userErrors{ field message } } }",
+                    {"f": [{"id": existing, "alt": p["alt"]}]}, "fileUpdate",
+                )
+            if key not in self.state["file_urls"]:
+                self._pending_files[existing] = key
+            return existing
+        found = self._find_uploaded_file(p["filename"])
+        if found:
+            gid, url = found
+            self._warn("File", key, "reused a file uploaded by an earlier run")
+            if url:
+                self.state["file_urls"][key] = url
+            else:
+                self._pending_files[gid] = key
+            return gid
+        create = {
+            "originalSource": self._source_url(p["source_url"]),
+            "contentType": p.get("content_type") or "IMAGE",
+            "filename": p["filename"],
+        }
+        if p.get("alt"):
+            create["alt"] = p["alt"]
+        result = self.client.mutate(
+            "mutation($f:[FileCreateInput!]!){ fileCreate(files:$f){ files{ id fileStatus"
+            " ... on MediaImage { image{ url } }"
+            " ... on GenericFile { url } } userErrors{ field message code } } }",
+            {"f": [create]}, "fileCreate",
+        )
+        files = result.get("files") or []
+        if not files:
+            raise ShopifyAdminError("fileCreate returned no file")
+        gid = files[0]["id"]
+        url = files[0].get("url") or (files[0].get("image") or {}).get("url")
+        if url:
+            self.state["file_urls"][key] = url
+        else:
+            # Shopify processes the fetch asynchronously; the CDN URL arrives
+            # once fileStatus is READY. Collected and polled in one batch by
+            # file_urls(), which the loader calls before it writes any page.
+            self._pending_files[gid] = key
+        return gid
+
+    def _find_uploaded_file(self, name: str):
+        """(gid, url) for a file an earlier interrupted run already uploaded."""
+        stem = self._stem(name)
+        if not stem:
+            return None
+        try:
+            data = self.client.graphql(
+                "query($q:String!){ files(first:20, query:$q){ nodes{ id fileStatus"
+                " ... on MediaImage { image{ url } }"
+                " ... on GenericFile { url } } } }",
+                {"q": f"filename:{_quote(name)}"},
+            )
+        except ShopifyAdminError:
+            return None
+        claimed = {e["id"] for e in self.state["objects"].get("File", {}).values()}
+        for node in (data.get("files") or {}).get("nodes", []):
+            if node["id"] in claimed or node.get("fileStatus") == "FAILED":
+                continue
+            url = node.get("url") or (node.get("image") or {}).get("url")
+            if url and self._stem(url) not in (stem, ""):
+                continue
+            return node["id"], url
+        return None
+
+    def file_urls(self) -> dict:
+        """source URL -> CDN URL, polling anything Shopify is still processing.
+
+        Called by the loader immediately before the first page is written, so
+        every body image has a destination URL by the time a body is rewritten.
+        """
+        deadline = time.time() + MEDIA_READY_WAIT_SECONDS
+        while self._pending_files:
+            resolved = []
+            for batch in _chunks(sorted(self._pending_files), NODE_BATCH):
+                data = self.client.graphql(
+                    "query($ids:[ID!]!){ nodes(ids:$ids){ id"
+                    " ... on MediaImage { fileStatus image{ url } }"
+                    " ... on GenericFile { fileStatus url } } }",
+                    {"ids": list(batch)},
+                )
+                for node in data.get("nodes") or []:
+                    if not node:
+                        continue
+                    key = self._pending_files.get(node["id"])
+                    url = node.get("url") or (node.get("image") or {}).get("url")
+                    if url:
+                        self.state["file_urls"][key] = url
+                        resolved.append(node["id"])
+                    elif node.get("fileStatus") == "FAILED":
+                        self._fail("File", key, "Shopify could not process the uploaded file")
+                        resolved.append(node["id"])
+            for gid in resolved:
+                self._pending_files.pop(gid, None)
+            if self._pending_files:
+                if time.time() > deadline:
+                    for gid, key in self._pending_files.items():
+                        self._warn("File", key,
+                                   "still processing after the wait; the body keeps the "
+                                   "WordPress URL until the next run")
+                    self._pending_files = {}
+                    break
+                time.sleep(3)
+        self._flush()
+        return self.state["file_urls"]
 
     # ------------------------------------------------------------------- pages
     def _page(self, key, p, existing):
@@ -1360,6 +1486,12 @@ class ShopifyAdminTarget(FakeShopifyTarget):
         for resource, mutation, result_key, _ in order:
             for key, entry in sorted(self.state["objects"].get(resource, {}).items()):
                 plan.append((resource, key, entry["id"], mutation, result_key))
+        # Body images (CLNT-323) live in Content -> Files; fileDelete takes a list.
+        for key, entry in sorted(self.state["objects"].get("File", {}).items()):
+            plan.append(("File", key, entry["id"],
+                         "mutation($ids:[ID!]!){ fileDelete(fileIds:$ids){ deletedFileIds"
+                         " userErrors{ field message } } }", "fileDelete",
+                         {"ids": [entry["id"]]}))
         for handle, gid in sorted(self.aux.get("created_blogs", {}).items()):
             plan.append(("Blog", handle, gid,
                          "mutation($id:ID!){ blogDelete(id:$id){ deletedBlogId userErrors{ field message } } }", "blogDelete"))
