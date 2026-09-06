@@ -58,6 +58,11 @@ export default function RootLayout({
       className={`${archivo.variable} ${inter.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-paper text-ink">
+        {/* Bypass Blocks (WCAG 2.4.1): first focusable element on every page,
+            off-screen until it takes focus. Targets the one <main> landmark. */}
+        <a href="#main" className="skip-link">
+          Skip to content
+        </a>
         {/* Site-wide structured data: the Organization every other node points
             at with `@id`, and the WebSite whose SearchAction advertises
             /search?q= for sitelinks. Rendered server-side, so it is in the
@@ -65,7 +70,12 @@ export default function RootLayout({
         <JsonLd data={[buildOrganizationJsonLd(), buildWebSiteJsonLd()]} />
         <CartProvider enabled={cartEnabled}>
           <Header />
-          <main className="flex-1">{children}</main>
+          {/* tabIndex={-1} so the skip link can move real focus here, not just
+              the scroll position; scroll-margin keeps it clear of the sticky
+              header (2.4.11 Focus Not Obscured). */}
+          <main id="main" tabIndex={-1} className="flex-1 scroll-mt-24 outline-none">
+            {children}
+          </main>
           <Footer />
         </CartProvider>
       </body>

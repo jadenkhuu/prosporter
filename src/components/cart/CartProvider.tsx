@@ -14,6 +14,7 @@ import {
 } from "react";
 import type { Cart, CartLine } from "@/lib/shopify/types";
 import { nodes } from "@/lib/shopify/types";
+import { appliedDiscountCodes, cartDiscountAmount, cartTotals } from "@/lib/cart-totals";
 import {
   addToCart,
   applyDiscountCode as applyDiscountCodeAction,
@@ -36,6 +37,11 @@ import {
  * keeping a second localStorage cart that could never reach checkout.
  */
 
+/** Which UI surface owns the current error message. */
+export type CartErrorSource = "cart" | "discount";
+
+type CartError = { message: string; source: CartErrorSource };
+
 type OptimisticAction =
   | { type: "setQuantity"; lineId: string; quantity: number }
   | { type: "remove"; lineId: string };
@@ -50,13 +56,19 @@ function recost(cart: Cart, lines: CartLine[]): Cart {
   const currency = cart.cost.subtotalAmount.currencyCode;
   const subtotal = lines.reduce((sum, l) => sum + (Number(l.cost.totalAmount.amount) || 0), 0);
   const taxes = Number(cart.cost.totalTaxAmount?.amount ?? 0) || 0;
+  // The optimistic frame keeps whatever discount Shopify last allocated; the
+  // real allocation comes back with the action's cart a moment later.
+  const discount = cartDiscountAmount(cart);
   return {
     ...cart,
     totalQuantity: lines.reduce((n, l) => n + l.quantity, 0),
     cost: {
       ...cart.cost,
       subtotalAmount: money(subtotal, currency),
-      totalAmount: money(subtotal + taxes, cart.cost.totalAmount.currencyCode),
+      totalAmount: money(
+        Math.max(0, subtotal + taxes - discount),
+        cart.cost.totalAmount.currencyCode,
+      ),
     },
     lines: {
       ...cart.lines,
@@ -108,6 +120,12 @@ type CartContextValue = {
   count: number;
   /** Subtotal as a number in the cart currency, for `formatPrice`. */
   subtotal: number;
+  /** Cart-level discount, positive, 0 when none is applied. */
+  discount: number;
+  /** What the shopper pays once the discount is applied. */
+  total: number;
+  /** Discount codes Shopify accepted for this cart. */
+  discountCodes: string[];
   currencyCode: string;
   checkoutUrl: string | null;
   /** False when Shopify is not configured. */
@@ -115,6 +133,11 @@ type CartContextValue = {
   isOpen: boolean;
   isPending: boolean;
   error: string | null;
+  /**
+   * Which control should render `error`. The discount form shows its own
+   * failures inline; everything else goes to the drawer's error banner.
+   */
+  errorSource: CartErrorSource;
   open: () => void;
   close: () => void;
   dismissError: () => void;
@@ -143,17 +166,22 @@ export function CartProvider({
   const [cart, setCart] = useState<Cart | null>(initialCart);
   const [optimisticCart, applyOptimistic] = useOptimistic(cart, optimisticReducer);
   const [isOpen, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // One error slot, tagged with the surface that should render it, so the
+  // discount form can show its own failure inline without a second state.
+  const [error, setError] = useState<CartError | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const run = useCallback(
-    (work: () => Promise<{ cart: Cart | null; error: string | null }>, optimistic?: OptimisticAction) => {
+    (
+      work: () => Promise<{ cart: Cart | null; error: string | null }>,
+      options: { optimistic?: OptimisticAction; source?: CartErrorSource } = {},
+    ) => {
       startTransition(async () => {
-        if (optimistic) applyOptimistic(optimistic);
+        if (options.optimistic) applyOptimistic(options.optimistic);
         const result = await work();
         reactStartTransition(() => {
           setCart(result.cart);
-          setError(result.error);
+          setError(result.error ? { message: result.error, source: options.source ?? "cart" } : null);
         });
       });
     },
@@ -170,18 +198,22 @@ export function CartProvider({
 
   const value = useMemo<CartContextValue>(() => {
     const lines = nodes(optimisticCart?.lines);
-    const currencyCode = optimisticCart?.cost.subtotalAmount.currencyCode ?? "AUD";
+    const totals = cartTotals(optimisticCart);
     return {
       cart: optimisticCart,
       lines,
       count: optimisticCart?.totalQuantity ?? 0,
-      subtotal: Number(optimisticCart?.cost.subtotalAmount.amount ?? 0) || 0,
-      currencyCode,
+      subtotal: totals.subtotal,
+      discount: totals.discount,
+      total: totals.total,
+      discountCodes: appliedDiscountCodes(optimisticCart),
+      currencyCode: totals.currencyCode,
       checkoutUrl: optimisticCart?.checkoutUrl ?? null,
       enabled,
       isOpen,
       isPending,
-      error,
+      error: error?.message ?? null,
+      errorSource: error?.source ?? "cart",
       open: () => setOpen(true),
       close: () => setOpen(false),
       dismissError: () => setError(null),
@@ -190,9 +222,13 @@ export function CartProvider({
         run(() => addToCart(variantId, quantity));
       },
       setQty: (lineId, quantity) =>
-        run(() => updateLineAction(lineId, quantity), { type: "setQuantity", lineId, quantity }),
-      remove: (lineId) => run(() => removeLineAction(lineId), { type: "remove", lineId }),
-      applyDiscount: (code) => run(() => applyDiscountCodeAction(code)),
+        run(() => updateLineAction(lineId, quantity), {
+          optimistic: { type: "setQuantity", lineId, quantity },
+        }),
+      remove: (lineId) =>
+        run(() => removeLineAction(lineId), { optimistic: { type: "remove", lineId } }),
+      applyDiscount: (code) =>
+        run(() => applyDiscountCodeAction(code), { source: "discount" }),
       refresh: () =>
         run(async () => ({ cart: await getCurrentCart(), error: null })),
       add: () => setOpen(true),

@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import type { CatalogProduct, Facets } from "@/lib/catalog-view";
 import { ProductCard } from "@/components/product/ProductCard";
 import { Filters, emptyFilters, type FilterState } from "./Filters";
 import { FilterIcon, CloseIcon, ChevronDown } from "@/components/icons";
+import { useModalDialog } from "@/lib/hooks/useModalDialog";
 
 const SORTS = [
   { id: "featured", label: "Featured" },
@@ -20,9 +21,6 @@ type SortId = (typeof SORTS)[number]["id"];
 
 const GENDER_LABELS: Record<string, string> = { men: "Men", women: "Women", unisex: "Unisex" };
 const SURFACE_LABELS: Record<string, string> = { beach: "Beach", indoor: "Indoor" };
-
-const FOCUSABLE =
-  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 export function Listing({ products, facets }: { products: CatalogProduct[]; facets: Facets }) {
   const [filters, setFilters] = useState<FilterState>(emptyFilters);
@@ -71,50 +69,16 @@ export function Listing({ products, facets }: { products: CatalogProduct[]; face
 
   /**
    * The mobile filter sheet is a modal dialog: focus moves in, Tab is trapped,
-   * Escape closes it and focus returns to the Filters button. Imperative only —
-   * no setState in the effect body.
+   * Escape closes it and focus returns to the Filters button. Shared with the
+   * cart drawer and the mobile menu — see src/lib/hooks/useModalDialog.ts.
    */
-  useEffect(() => {
-    if (!mobileFiltersOpen) return;
-    const sheet = sheetRef.current;
-    if (!sheet) return;
-    const opener =
-      filterButtonRef.current ??
-      (document.activeElement instanceof HTMLElement ? document.activeElement : null);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    sheet.focus({ preventScroll: true });
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        setMobileFiltersOpen(false);
-        return;
-      }
-      if (e.key !== "Tab") return;
-      const items = Array.from(sheet.querySelectorAll<HTMLElement>(FOCUSABLE));
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      const active = document.activeElement;
-      if (e.shiftKey && (active === first || active === sheet)) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault();
-        first.focus();
-      } else if (active instanceof HTMLElement && !sheet.contains(active)) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      document.removeEventListener("keydown", onKey, true);
-      opener?.focus({ preventScroll: true });
-    };
-  }, [mobileFiltersOpen]);
+  const closeSheet = useCallback(() => setMobileFiltersOpen(false), []);
+  useModalDialog({
+    open: mobileFiltersOpen,
+    panelRef: sheetRef,
+    openerRef: filterButtonRef,
+    onClose: closeSheet,
+  });
 
   // Active filter chips
   const chips: { label: string; clear: () => void }[] = [];

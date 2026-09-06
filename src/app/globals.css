@@ -67,6 +67,41 @@
     white-space: nowrap;
     border-width: 0;
   }
+  /*
+    Skip link (2.4.1 Bypass Blocks). First focusable element in the body,
+    off-screen until focused, then pinned to the top-left above the sticky
+    header. Uses the ink/paper tokens so it matches the primary buttons.
+  */
+  .skip-link {
+    position: fixed;
+    top: 0.5rem;
+    left: 0.5rem;
+    z-index: 200;
+    display: inline-block;
+    padding: 0.625rem 1.25rem;
+    border-radius: 999px;
+    background: var(--color-ink);
+    color: var(--color-paper);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
+    transform: translateY(calc(-100% - 1rem));
+    transition: transform 150ms ease-out;
+  }
+  .skip-link:focus {
+    transform: translateY(0);
+  }
+  /* The main landmark is only focusable as a skip-link target: no ring for the
+     pointer path, a restrained inset ring for the keyboard path. */
+  #main:focus {
+    outline: none;
+    box-shadow: none;
+  }
+  #main:focus-visible {
+    outline: 2px solid var(--color-green-deep);
+    outline-offset: -3px;
+    box-shadow: none;
+  }
   /* Belt-and-braces for the inert background behind an open modal. */
   [inert] {
     pointer-events: none;

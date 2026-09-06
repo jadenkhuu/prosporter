@@ -150,6 +150,7 @@ export const CART_FRAGMENT = /* GraphQL */ `
     note
     buyerIdentity { email countryCode }
     discountCodes { code applicable }
+    discountAllocations { discountedAmount { ...Money } }
     cost {
       subtotalAmount { ...Money }
       totalAmount { ...Money }

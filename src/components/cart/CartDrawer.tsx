@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { useCart } from "./CartProvider";
 import { formatPrice } from "@/lib/format";
-import { CloseIcon, PlusIcon, MinusIcon, ArrowRight } from "@/components/icons";
+import { normalizeDiscountCode } from "@/lib/cart-totals";
+import { useModalDialog } from "@/lib/hooks/useModalDialog";
+import { CloseIcon, PlusIcon, MinusIcon, ArrowRight, ChevronDown } from "@/components/icons";
 import type { CartLine } from "@/lib/shopify/types";
 
 const FREE_SHIP_THRESHOLD = 150;
-
-/** Everything a shopper can Tab to inside the panel, in DOM order. */
-const FOCUSABLE =
-  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 /** Size / colour chosen on the variant, minus Shopify's single-variant default. */
 function variantSummary(line: CartLine): string | null {
@@ -24,12 +22,140 @@ function lineImage(line: CartLine) {
   return line.merchandise.image ?? line.merchandise.product.featuredImage;
 }
 
+/**
+ * "Have a discount code?" — a disclosure over a one-field form, plus a chip per
+ * applied code.
+ *
+ * Accessibility notes:
+ *  - the toggle is a real <button> with aria-expanded / aria-controls, so
+ *    Tab + Enter/Space work with no key handling of our own;
+ *  - the panel is hidden with `hidden` rather than unmounted, which keeps the
+ *    drawer's focus trap (it skips controls with no layout box) correct;
+ *  - the input is labelled, marked aria-invalid on failure and described by the
+ *    message node;
+ *  - one polite live region carries either the failure or the confirmation, and
+ *    the visible copy is aria-hidden so it is not read twice.
+ */
+function DiscountCode() {
+  const { applyDiscount, discountCodes, isPending, error, errorSource } = useCart();
+  const uid = useId();
+  const panelId = `discount-panel-${uid}`;
+  const inputId = `discount-input-${uid}`;
+  const messageId = `discount-message-${uid}`;
+
+  const [expanded, setExpanded] = useState(false);
+  const [code, setCode] = useState("");
+
+  const discountError = error && errorSource === "discount" ? error : null;
+
+  const submit = useCallback(
+    (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      const next = normalizeDiscountCode(code);
+      if (!next || isPending) return;
+      applyDiscount(next);
+      setCode("");
+    },
+    [applyDiscount, code, isPending],
+  );
+
+  const announcement = discountError
+    ? discountError
+    : discountCodes.length
+      ? `Discount code ${discountCodes.join(", ")} applied.`
+      : "";
+
+  return (
+    <div className="mb-4 border-b border-line pb-4">
+      {discountCodes.length > 0 && (
+        <ul className="mb-3 flex flex-wrap gap-2" aria-label="Applied discount codes">
+          {discountCodes.map((applied) => (
+            <li key={applied}>
+              <span className="inline-flex items-center gap-1 rounded-full border border-green-deep bg-surface py-1 pl-3 pr-1 text-xs font-semibold text-green-deep">
+                <span aria-hidden="true">{applied}</span>
+                <button
+                  type="button"
+                  onClick={() => applyDiscount("")}
+                  disabled={isPending}
+                  aria-disabled={isPending}
+                  aria-label={`Remove discount code ${applied}`}
+                  className="grid h-6 w-6 place-items-center rounded-full text-green-deep transition-colors hover:bg-surface-2 disabled:opacity-50"
+                >
+                  <CloseIcon width={14} height={14} />
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        className="flex w-full items-center justify-between gap-2 py-1 text-sm font-medium text-ink"
+      >
+        Have a discount code?
+        <ChevronDown
+          width={16}
+          height={16}
+          aria-hidden="true"
+          className={`transition-transform ${expanded ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      <div id={panelId} hidden={!expanded} className="mt-2">
+        <form onSubmit={submit} className="flex gap-2">
+          <label className="sr-only" htmlFor={inputId}>
+            Discount code
+          </label>
+          <input
+            id={inputId}
+            name="discountCode"
+            type="text"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            placeholder="Enter code"
+            aria-invalid={discountError ? true : undefined}
+            aria-describedby={messageId}
+            className="min-w-0 flex-1 rounded-full border border-line bg-paper px-4 py-2.5 text-sm text-ink placeholder:text-muted"
+          />
+          <button
+            type="submit"
+            disabled={isPending || normalizeDiscountCode(code).length === 0}
+            aria-disabled={isPending || normalizeDiscountCode(code).length === 0}
+            aria-busy={isPending}
+            className="rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition-colors hover:bg-ink-2 disabled:opacity-50"
+          >
+            {isPending ? "Applying…" : "Apply"}
+          </button>
+        </form>
+        {discountError && (
+          <p className="mt-2 text-xs text-ink" aria-hidden="true">
+            {discountError}
+          </p>
+        )}
+      </div>
+
+      <p id={messageId} className="sr-only" role="status" aria-live="polite">
+        {announcement}
+      </p>
+    </div>
+  );
+}
+
 export function CartDrawer() {
   const {
     lines,
     isOpen,
     close,
     subtotal,
+    discount,
+    total,
     currencyCode,
     count,
     setQty,
@@ -38,85 +164,27 @@ export function CartDrawer() {
     enabled,
     isPending,
     error,
+    errorSource,
   } = useCart();
 
   const panelRef = useRef<HTMLElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  /** The control that opened the drawer; focus goes back to it on close. */
-  const openerRef = useRef<HTMLElement | null>(null);
 
   /**
-   * Modal behaviour, all in one effect and all imperative — no setState, so
-   * `react-hooks/set-state-in-effect` stays happy:
-   *  - remember the opener, move focus into the panel
-   *  - trap Tab / Shift+Tab inside the panel, close on Escape
-   *  - lock body scroll and make every sibling of the drawer `inert`
-   *  - on close, undo all of it and return focus to the opener
+   * Modal behaviour (focus in, Tab trap, Escape, scroll lock, inert background,
+   * focus back to the opener) is shared with the mobile menu and the filter
+   * sheet. See src/lib/hooks/useModalDialog.ts.
    */
-  useEffect(() => {
-    if (!isOpen) return;
-    const panel = panelRef.current;
-    const root = rootRef.current;
-    if (!panel) return;
+  useModalDialog({
+    open: isOpen,
+    panelRef,
+    rootRef,
+    onClose: close,
+    inertSiblings: true,
+  });
 
-    openerRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    // Background is inert while the dialog is open (blocks pointer, focus and AT).
-    const inerted: HTMLElement[] = [];
-    if (root?.parentElement) {
-      for (const sibling of Array.from(root.parentElement.children)) {
-        if (sibling === root || !(sibling instanceof HTMLElement)) continue;
-        if (sibling.hasAttribute("inert")) continue;
-        sibling.setAttribute("inert", "");
-        inerted.push(sibling);
-      }
-    }
-
-    // Focus the panel itself so screen readers announce the dialog name first.
-    panel.focus({ preventScroll: true });
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        close();
-        return;
-      }
-      if (e.key !== "Tab") return;
-      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-        (el) => el.offsetParent !== null || el === panel,
-      );
-      if (items.length === 0) {
-        e.preventDefault();
-        panel.focus({ preventScroll: true });
-        return;
-      }
-      const first = items[0];
-      const last = items[items.length - 1];
-      const active = document.activeElement;
-      if (e.shiftKey && (active === first || active === panel)) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault();
-        first.focus();
-      } else if (active instanceof HTMLElement && !panel.contains(active)) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
-
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      document.removeEventListener("keydown", onKey, true);
-      for (const el of inerted) el.removeAttribute("inert");
-      openerRef.current?.focus({ preventScroll: true });
-    };
-  }, [isOpen, close]);
+  // Discount failures are shown (and announced) by the discount form itself.
+  const cartError = error && errorSource !== "discount" ? error : null;
 
   const remaining = Math.max(0, FREE_SHIP_THRESHOLD - subtotal);
   const progress = Math.min(100, (subtotal / FREE_SHIP_THRESHOLD) * 100);
@@ -177,15 +245,15 @@ export function CartDrawer() {
         {/* Status + error live region: one node that stays mounted so changes
             are announced rather than re-announcing the whole drawer. */}
         <p className="sr-only" aria-live="polite" role="status">
-          {error ? error : bagStatus}
+          {cartError ? cartError : bagStatus}
         </p>
 
-        {error && (
+        {cartError && (
           <p
             className="border-b border-line bg-surface px-5 py-3 text-sm text-ink"
             aria-hidden="true"
           >
-            {error}
+            {cartError}
           </p>
         )}
 
@@ -333,13 +401,34 @@ export function CartDrawer() {
             </ul>
 
             <footer className="border-t border-line px-5 py-4">
+              <DiscountCode />
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted">Subtotal</span>
-                <span className="display text-xl tabular-nums">
+                <span
+                  className={`tabular-nums ${discount > 0 ? "text-sm text-ink" : "display text-xl"}`}
+                >
                   {formatPrice(subtotal, currencyCode)}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-subtle">
+              {discount > 0 && (
+                <>
+                  <div className="mt-1 flex items-center justify-between text-sm text-green-deep">
+                    <span>Discount</span>
+                    <span className="tabular-nums">
+                      <span className="sr-only">minus </span>
+                      <span aria-hidden="true">−</span>
+                      {formatPrice(discount, currencyCode)}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between border-t border-line pt-2">
+                    <span className="text-sm text-muted">Total</span>
+                    <span className="display text-xl tabular-nums">
+                      {formatPrice(total, currencyCode)}
+                    </span>
+                  </div>
+                </>
+              )}
+              <p className="mt-1 text-xs text-muted">
                 Shipping &amp; taxes calculated at checkout.
               </p>
               {checkoutUrl ? (

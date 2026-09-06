@@ -116,6 +116,8 @@ export type Cart = {
   note: string | null;
   buyerIdentity: { email: string | null; countryCode: string | null };
   discountCodes: { code: string; applicable: boolean }[];
+  /** Cart-level (code + automatic) discounts. Line discounts sit on the line. */
+  discountAllocations: { discountedAmount: Money }[];
   cost: {
     subtotalAmount: Money;
     totalAmount: Money;
