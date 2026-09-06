@@ -66,8 +66,10 @@ test("the production policy allows GA4 and Shopify images and nothing else", () 
   assert.ok(csp["script-src"].includes("https://www.googletagmanager.com"));
 
   assert.ok(csp["img-src"].includes("https://cdn.shopify.com"));
-  // Transitional: migrated page bodies still hotlink legacy WordPress uploads.
-  assert.ok(csp["img-src"].includes("https://prosporter.com.au"));
+  // CLNT-323: migrated page bodies were re-pointed at the Shopify CDN, so the
+  // legacy WordPress origin must stay out; a regression here means a page body
+  // hotlinks wp-content again and will break at DNS cutover.
+  assert.ok(csp["img-src"].every((source) => !source.includes("prosporter.com.au")));
   // Cart writes are server actions, so no client-side call leaves for Shopify.
   assert.ok(csp["connect-src"].every((source) => !source.includes("myshopify.com")));
   assert.ok(csp["connect-src"].includes("https://*.google-analytics.com"));

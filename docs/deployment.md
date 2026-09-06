@@ -122,7 +122,7 @@ two places invites them to drift.
 default-src 'self';
 script-src 'self' 'unsafe-inline' https://www.googletagmanager.com;
 style-src 'self' 'unsafe-inline';
-img-src 'self' data: blob: https://cdn.shopify.com https://prosporter.com.au https://www.prosporter.com.au https://www.googletagmanager.com https://*.google-analytics.com;
+img-src 'self' data: blob: https://cdn.shopify.com https://www.googletagmanager.com https://*.google-analytics.com;
 font-src 'self' data:;
 connect-src 'self' https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com;
 frame-src 'none';
@@ -154,12 +154,10 @@ What each non-`'self'` source is for:
 - **`img-src https://cdn.shopify.com`** — every product image, matching the
   `remotePatterns` allow-list in `next.config.ts`. `data:`/`blob:` cover `next/image`
   placeholders; the two Google hosts cover GA's pixel fallback.
-- **`img-src https://prosporter.com.au`** — **transitional.** Several migrated Shopify
-  page and article bodies (`/about`, `/faq`, `/privacy-policy` and others) still hotlink
-  `wp-content/uploads/...` on the legacy WordPress origin instead of the Shopify CDN;
-  without this those images go blank. Drop this source once the bodies are re-pointed at
-  `cdn.shopify.com`. After cutover the storefront itself serves `prosporter.com.au`, so
-  `'self'` covers it anyway.
+- **No legacy WordPress origin.** Migrated page bodies were re-pointed at
+  `cdn.shopify.com` on 6 Sep 2026 (CLNT-323, `scripts/migration/body_media.py`), and the
+  test suite asserts the origin stays out of `img-src`. If a content image goes blank, fix
+  the body in Shopify (or re-run the content stage) rather than re-adding the origin.
 - **`connect-src` Google hosts** — GA4 beacons. There is deliberately **no** Shopify
   origin here: cart reads and writes are server actions that POST to this origin, and no
   client component fetches the Storefront API.

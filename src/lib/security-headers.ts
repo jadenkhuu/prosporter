@@ -47,13 +47,11 @@ function cspDirectives(isDev: boolean): string[] {
     // data:/blob: cover next/image placeholders. The Google hosts serve GA's
     // 1x1 collect pixel when a beacon falls back to an image request.
     //
-    // prosporter.com.au is **transitional**: several migrated Shopify page and
-    // article bodies (/about, /faq, /privacy-policy and others) still hotlink
-    // `wp-content/uploads/...` on the legacy WordPress origin instead of the
-    // Shopify CDN, and dropping it here would blank those images. Remove this
-    // source once those bodies are re-pointed at cdn.shopify.com; after cutover
-    // the storefront itself serves prosporter.com.au, so 'self' covers it.
-    "img-src 'self' data: blob: https://cdn.shopify.com https://prosporter.com.au https://www.prosporter.com.au https://www.googletagmanager.com https://*.google-analytics.com",
+    // The legacy WordPress origin is deliberately absent: migrated page bodies
+    // were re-pointed at cdn.shopify.com on 6 Sep 2026 (CLNT-323), and after
+    // cutover the storefront itself serves prosporter.com.au, so 'self' covers
+    // it. If an image goes blank, fix the body in Shopify; do not re-add it.
+    "img-src 'self' data: blob: https://cdn.shopify.com https://www.googletagmanager.com https://*.google-analytics.com",
 
     // next/font/google downloads at build time and serves from /_next; data:
     // is kept for inlined faces.
