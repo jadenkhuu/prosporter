@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { formatArticleDate, getArticleSlugs, getArticleView } from "@/lib/content-source";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { buildArticleJsonLd, buildBreadcrumbJsonLd } from "@/lib/seo/json-ld";
+import { OG_DEFAULTS } from "@/lib/seo/metadata";
 
 /**
  * Blog article (CLNT-171). 14 legacy post URLs 308 to `/blog/<slug>`; the
@@ -35,7 +38,9 @@ export async function generateMetadata({
     description,
     alternates: { canonical: `/blog/${article.handle}` },
     openGraph: {
+      ...OG_DEFAULTS,
       type: "article",
+      url: `/blog/${article.handle}`,
       title: article.seoTitle || article.title,
       description,
       publishedTime: article.publishedAt ?? undefined,
@@ -55,8 +60,30 @@ export default async function BlogArticlePage({
 
   const date = formatArticleDate(article.publishedAt);
 
+  /**
+   * Article structured data. The byline carries the author's display name only,
+   * exactly as it is rendered below — `authorV2.email` is never fetched by the
+   * data layer and must never appear here. Shopify's Storefront API exposes no
+   * article `updatedAt`, so `dateModified` falls back to `publishedAt`.
+   */
+  const articleJsonLd = buildArticleJsonLd({
+    path: `/blog/${article.handle}`,
+    headline: article.title,
+    description: article.description,
+    image: article.image?.url,
+    datePublished: article.publishedAt,
+    authorName: article.author,
+  });
+
+  const breadcrumbJsonLd = buildBreadcrumbJsonLd([
+    { name: "Home", path: "/" },
+    { name: "Journal", path: "/blog" },
+    { name: article.title, path: `/blog/${article.handle}` },
+  ]);
+
   return (
     <article className="mx-auto max-w-[760px] px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+      <JsonLd data={[articleJsonLd, breadcrumbJsonLd]} />
       <Link href="/blog" className="eyebrow text-subtle transition-colors hover:text-ink">
         ← Journal
       </Link>

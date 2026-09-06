@@ -20,6 +20,8 @@ export type CatalogProduct = {
   /** Storefront handle / mock slug. Unique, so it doubles as the React key. */
   handle: string;
   title: string;
+  /** Shopify `Product.vendor`, trimmed. Null when the source has none (mock catalog). */
+  vendor: string | null;
   image: CatalogImage | null;
   /** Lowest variant price. */
   price: number;
@@ -53,6 +55,8 @@ export type CatalogOption = {
 export type CatalogVariant = {
   id: string;
   title: string;
+  /** Merchant SKU, when set. Feeds the product page's structured data. */
+  sku: string | null;
   available: boolean;
   price: number;
   compareAtPrice: number | null;

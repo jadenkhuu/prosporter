@@ -4,6 +4,9 @@ import type { Metadata } from "next";
 import { getProductHandles, getProductPage } from "@/lib/catalog-source";
 import { ProductDetail } from "@/components/product/ProductDetail";
 import { ProductCard } from "@/components/product/ProductCard";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { buildBreadcrumbJsonLd, buildProductJsonLd } from "@/lib/seo/json-ld";
+import { OG_DEFAULTS } from "@/lib/seo/metadata";
 
 /** Empty when Shopify is unconfigured or unreachable; those routes render on demand. */
 export async function generateStaticParams(): Promise<{ slug: string }[]> {
@@ -24,7 +27,11 @@ export async function generateMetadata({
   return {
     title: product.seo.title || `${product.title} · ProSporter`,
     description,
+    alternates: { canonical: `/product/${product.handle}` },
     openGraph: {
+      ...OG_DEFAULTS,
+      type: "website",
+      url: `/product/${product.handle}`,
       title: product.seo.title || product.title,
       description,
       images: product.image ? [{ url: product.image.url }] : undefined,
@@ -43,8 +50,39 @@ export default async function ProductPage({
 
   const { product, related } = page;
 
+  /**
+   * Product + BreadcrumbList structured data, built from the same view model
+   * the page renders so the two can never disagree. One variant emits a plain
+   * Offer with its SKU; several emit an AggregateOffer over the price range the
+   * page itself shows.
+   */
+  const productJsonLd = buildProductJsonLd({
+    path: `/product/${product.handle}`,
+    name: product.title,
+    description: product.seo.description || product.description,
+    images: product.images.map((image) => image.url),
+    brand: product.vendor,
+    sku: product.variants.length === 1 ? product.variants[0].sku : null,
+    currency: product.currency,
+    offers: product.variants.map((variant) => ({
+      sku: variant.sku,
+      price: variant.price,
+      currency: variant.currency,
+      available: variant.available,
+    })),
+    // The mock catalog has no variants; the card's price range still describes it.
+    priceRange: { min: product.price, max: product.maxPrice, available: product.inStock },
+  });
+
+  const breadcrumbJsonLd = buildBreadcrumbJsonLd([
+    { name: "Home", path: "/" },
+    { name: product.breadcrumb.label, path: product.breadcrumb.href },
+    { name: product.title, path: `/product/${product.handle}` },
+  ]);
+
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+      <JsonLd data={[productJsonLd, breadcrumbJsonLd]} />
       <nav className="mb-6 flex items-center gap-1.5 text-xs text-subtle" aria-label="Breadcrumb">
         <Link href="/" className="transition-colors hover:text-ink">
           Home

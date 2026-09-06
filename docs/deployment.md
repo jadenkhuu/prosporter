@@ -18,6 +18,7 @@ No Admin API credential is ever configured on the host.
    | `SHOPIFY_STORE_DOMAIN` | `prosporter.myshopify.com` | `*.myshopify.com` only |
    | `SHOPIFY_STOREFRONT_TOKEN` | Headless channel public token | dev storefront token for now; swap for a production storefront token before go-live |
    | `SHOPIFY_WEBHOOK_SECRET` | ProSporter-migration app client secret | HMAC key for `/api/webhooks/shopify` (see `docs/webhooks.md`) |
+   | `NEXT_PUBLIC_SITE_URL` | `https://prosporter.com.au` | **Production only.** Canonical origin; see "SEO routes" below |
    | `LOG_LEVEL` | `info` | optional |
 
    Do **not** set `SHOPIFY_OPTIONAL` on Vercel. It exists only so CI can build without a
@@ -48,6 +49,62 @@ and time-based revalidation (1 h catalog, 5 min search). On Vercel that cache is
 across regions and instances, so a webhook hitting one function invalidates for all.
 The webhook route's duplicate-suppression LRU is per instance and best effort; Shopify
 retries are idempotent anyway because revalidation is.
+
+## SEO routes: sitemap, robots and structured data
+
+| Route | Source | Notes |
+|---|---|---|
+| `/sitemap.xml` | `src/app/sitemap.ts` | Home, `/shop` + every collection, every product, every `(content)` page, `/blog` + every article. `lastmod` is Shopify `updatedAt` / `publishedAt`. ~180 URLs, one file — no `generateSitemaps` needed until the catalog grows an order of magnitude. |
+| `/robots.txt` | `src/app/robots.ts` | Production: allow all, disallow `/search`, `/api/`, `/cart`, `/checkout`, `/account` and the `?sort=` / `?filter` facet permutations, plus the `Sitemap:` line. Anything that is not production: **disallow-all**. |
+| JSON-LD | `src/lib/seo/json-ld.ts` | Organization + WebSite (SearchAction → `/search?q=`) in the root layout; Product + BreadcrumbList on `/product/[slug]`; BreadcrumbList on `/shop/...` and content pages; Article + BreadcrumbList on `/blog/[slug]`. |
+
+Both routes are prerendered at build time and revalidate hourly, matching the catalog
+cache window in `src/lib/shopify/tags.ts`.
+
+### The site URL is one value
+
+`NEXT_PUBLIC_SITE_URL` (`src/lib/site.ts`) is the only origin the app knows. It feeds
+`metadataBase` in the root layout, every `alternates.canonical`, every Open Graph URL,
+the `Sitemap:` line in robots.txt and every `<loc>` in the sitemap. Set it **on Production
+only**, to the live origin (`https://prosporter.com.au` after cutover; the `*.vercel.app`
+production alias before it). Leave it unset on Preview so previews fall back to
+`VERCEL_PROJECT_PRODUCTION_URL` / `VERCEL_URL`. `SITE_URL` is accepted as an alias.
+
+Because both routes are prerendered, the variable must be present **at build time**, not
+just at runtime. Changing it requires a redeploy, not just a redeploy of the env var.
+
+### Preview deployments are never indexed
+
+`src/app/robots.ts` returns `User-Agent: * / Disallow: /` whenever `VERCEL_ENV` is not
+`production`, so every per-commit preview URL is disallow-all. This is separate from the
+two places that carry a real `noindex`: `/search` (route metadata, `noindex, follow`) and
+the 410 bodies in `src/proxy.ts` (`X-Robots-Tag: noindex`). robots.txt is a crawl
+directive, not an index directive — do not replace either of those with it.
+
+### Validating after a deploy
+
+```bash
+# Production: allow-list plus the sitemap line
+curl -s https://<host>/robots.txt
+# A preview URL must answer "User-Agent: *\nDisallow: /"
+curl -s https://<preview-host>/robots.txt
+
+# Sitemap: 200, application/xml, and a URL count that matches the catalog
+curl -sI https://<host>/sitemap.xml
+curl -s  https://<host>/sitemap.xml | grep -c "<loc>"
+# Every <loc> must be on the canonical origin
+curl -s  https://<host>/sitemap.xml | grep -o "<loc>[^<]*" | sed "s|<loc>||" | cut -d/ -f1-3 | sort -u
+```
+
+Structured data: paste a product, a collection and an article URL into Google's
+[Rich Results Test](https://search.google.com/test/rich-results) and the
+[Schema Markup Validator](https://validator.schema.org/). A product page must report
+`Product` (with `offers`) and `Breadcrumb` with no errors. Locally,
+`curl -s http://localhost:3000/product/<handle> | grep -o "application/ld+json"` confirms
+the blocks are server-rendered rather than injected by client JavaScript.
+
+Finally, submit `https://<host>/sitemap.xml` in Google Search Console once the custom
+domain is live (CLNT-303).
 
 ## Custom domain and go-live (later)
 

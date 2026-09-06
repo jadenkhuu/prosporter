@@ -26,6 +26,7 @@ import {
   type ArticleCard,
 } from "./shopify/content";
 import { isShopifyConfigured } from "./shopify";
+import type { SitemapEntry } from "./site.ts";
 
 export type ContentSource = "shopify" | "mock";
 
@@ -248,4 +249,39 @@ export function formatArticleDate(iso: string | null): string | null {
     year: "numeric",
     timeZone: "Australia/Sydney",
   }).format(date);
+}
+
+// ----------------------------------------------------------------- sitemap
+
+/**
+ * Content URLs for `src/app/sitemap.ts`, with Shopify's `updatedAt` /
+ * `publishedAt` as `lastmod`. Empty in mock mode and on a Storefront failure,
+ * for the same reasons as the catalog entries in `catalog-source.ts`.
+ *
+ * Reserved handles are dropped (they can never be reached through `/[handle]`)
+ * and so are the `-2` duplicates left by the WooCommerce export, which would
+ * otherwise advertise two URLs for one piece of content.
+ */
+export async function getContentPageSitemapEntries(): Promise<SitemapEntry[]> {
+  if (contentSource() === "mock") return [];
+  try {
+    return (await getAllPageHandles())
+      .filter((p) => !RESERVED_HANDLES.has(p.handle) && !isDuplicateHandle(p.handle))
+      .map((p) => ({ path: `/${p.handle}`, lastModified: p.updatedAt || null }));
+  } catch (err) {
+    log.warn("content.sitemap_failed", { route: "page", ...errorFields(err) });
+    return [];
+  }
+}
+
+export async function getArticleSitemapEntries(): Promise<SitemapEntry[]> {
+  if (contentSource() === "mock") return [];
+  try {
+    return (await getAllArticleHandles(DEFAULT_BLOG_HANDLE))
+      .filter((a) => !isDuplicateHandle(a.handle))
+      .map((a) => ({ path: `/blog/${a.handle}`, lastModified: a.publishedAt || null }));
+  } catch (err) {
+    log.warn("content.sitemap_failed", { route: "blog", ...errorFields(err) });
+    return [];
+  }
 }

@@ -1,10 +1,21 @@
 import Link from "next/link";
 import Image from "next/image";
+import type { Metadata } from "next";
 import { getHomeCatalog } from "@/lib/catalog-source";
 import { ProductCard } from "@/components/product/ProductCard";
 import { HeroCarousel } from "@/components/home/HeroCarousel";
 import { HeroBackground } from "@/components/home/HeroBackground";
 import { ArrowRight } from "@/components/icons";
+
+/**
+ * Title, description and Open Graph come from the root layout — the home page is
+ * the one route whose metadata *is* the site's. Only the canonical is declared
+ * here: setting it in the layout would make every child route inherit "/" as its
+ * canonical unless it overrode it.
+ */
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 const PLACEHOLDER = "/products/placeholder.svg";
 /** SVG placeholders bypass the image optimizer. */

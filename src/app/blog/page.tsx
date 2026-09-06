@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 
 import { formatArticleDate, getArticleList } from "@/lib/content-source";
+import { OG_DEFAULTS } from "@/lib/seo/metadata";
 
 /**
  * Blog index (CLNT-171). Every legacy `/category/<slug>/` and `/tag/<slug>/`
@@ -11,10 +12,19 @@ import { formatArticleDate, getArticleList } from "@/lib/content-source";
  * Articles come from the `news` blog, newest first; `-2` duplicate handles left
  * by the WooCommerce export are filtered out of the listing in `content.ts`.
  */
+const BLOG_DESCRIPTION = "News, guides and product notes from the ProSporter team.";
+
 export const metadata: Metadata = {
   title: "Journal · ProSporter",
-  description: "News, guides and product notes from the ProSporter team.",
+  description: BLOG_DESCRIPTION,
   alternates: { canonical: "/blog" },
+  openGraph: {
+    ...OG_DEFAULTS,
+    type: "website",
+    url: "/blog",
+    title: "Journal · ProSporter",
+    description: BLOG_DESCRIPTION,
+  },
 };
 
 export default async function BlogIndex() {

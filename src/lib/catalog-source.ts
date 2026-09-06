@@ -49,6 +49,7 @@ import {
   type ProductCard as ShopifyProductCard,
 } from "./shopify";
 import { searchProducts } from "./shopify/search";
+import type { SitemapEntry } from "./site.ts";
 
 export type CatalogSource = "shopify" | "mock";
 
@@ -109,6 +110,7 @@ function fromShopifyCard(card: ShopifyProductCard): CatalogProduct {
   return {
     handle: card.handle,
     title: card.title,
+    vendor: card.vendor?.trim() || null,
     image: toImage(card.featuredImage, card.title),
     price,
     maxPrice,
@@ -169,6 +171,7 @@ function toVariants(product: ShopifyProduct): CatalogVariant[] {
   return nodes(product.variants).map((v) => ({
     id: v.id,
     title: v.title,
+    sku: v.sku ?? null,
     available: v.availableForSale,
     price: money(v.price.amount),
     compareAtPrice: v.compareAtPrice ? money(v.compareAtPrice.amount) : null,
@@ -212,6 +215,7 @@ function fromMockProduct(p: MockProduct): CatalogProduct {
   return {
     handle: p.slug,
     title: p.name,
+    vendor: null,
     image: { url: p.image_local, alt: p.name, width: null, height: null },
     price: p.price,
     maxPrice: p.price,
@@ -519,6 +523,41 @@ export async function getListingParams(): Promise<string[][]> {
     return [[], ...collections.filter((c) => c.handle !== "frontpage").map((c) => [c.handle])];
   } catch (err) {
     log.warn("catalog.static_params_failed", { route: "shop", ...errorFields(err) });
+    return [];
+  }
+}
+
+// ----------------------------------------------------------------- sitemap
+
+/**
+ * Catalog URLs for `src/app/sitemap.ts`, with Shopify's `updatedAt` as
+ * `lastmod`. Empty in mock mode (a `SHOPIFY_OPTIONAL=1` build has no real
+ * catalog to advertise) and empty rather than thrown when the Storefront API is
+ * unreachable, so a sitemap request degrades to the static routes instead of
+ * failing the build or returning a 500.
+ */
+export async function getProductSitemapEntries(): Promise<SitemapEntry[]> {
+  if (catalogSource() === "mock") return [];
+  try {
+    return (await getAllProductHandles()).map((p) => ({
+      path: `/product/${p.handle}`,
+      lastModified: p.updatedAt || null,
+    }));
+  } catch (err) {
+    log.warn("catalog.sitemap_failed", { route: "product", ...errorFields(err) });
+    return [];
+  }
+}
+
+/** Every published collection as `/shop/<handle>`; `frontpage` is the home rail, not a page. */
+export async function getCollectionSitemapEntries(): Promise<SitemapEntry[]> {
+  if (catalogSource() === "mock") return [];
+  try {
+    return (await getAllCollections())
+      .filter((c) => c.handle !== "frontpage")
+      .map((c) => ({ path: `/shop/${c.handle}`, lastModified: c.updatedAt || null }));
+  } catch (err) {
+    log.warn("catalog.sitemap_failed", { route: "shop", ...errorFields(err) });
     return [];
   }
 }

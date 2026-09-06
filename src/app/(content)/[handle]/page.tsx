@@ -2,6 +2,9 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 import { getContentPage, getContentPageHandles } from "@/lib/content-source";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { buildBreadcrumbJsonLd } from "@/lib/seo/json-ld";
+import { OG_DEFAULTS } from "@/lib/seo/metadata";
 
 /**
  * Shopify pages at the top level (CLNT-171): `/about`, `/contact`, `/faq`,
@@ -47,7 +50,9 @@ export async function generateMetadata({
     description,
     alternates: { canonical: `/${page.handle}` },
     openGraph: {
+      ...OG_DEFAULTS,
       type: "article",
+      url: `/${page.handle}`,
       title: page.seoTitle || page.title,
       description,
     },
@@ -65,6 +70,12 @@ export default async function ContentPageRoute({
 
   return (
     <article className="mx-auto max-w-[820px] px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+      <JsonLd
+        data={buildBreadcrumbJsonLd([
+          { name: "Home", path: "/" },
+          { name: page.title, path: `/${page.handle}` },
+        ])}
+      />
       <h1 className="display text-4xl sm:text-5xl">{page.title}</h1>
       {page.unavailable ? (
         <p className="mt-6 text-sm text-muted">
