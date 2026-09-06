@@ -1472,8 +1472,15 @@ class ShopifyAdminTarget(FakeShopifyTarget):
         return report
 
     # ------------------------------------------------------------------- purge
-    def purge(self, dry_run: bool = True) -> dict:
-        """Delete every object this ledger created on the store (staging resets only)."""
+    def purge(self, dry_run: bool = True, only: set[str] | None = None) -> dict:
+        """Delete every object this ledger created on the store (staging resets only).
+
+        ``only`` restricts the purge to the named resources (e.g. ``{"Customer",
+        "DiscountCodeNode"}``). A scoped purge removes just those entries from
+        the ledger and keeps the ledger files, so the rest of the store stays
+        tracked. It exists for exactly one situation: a pre-cutover run that
+        forgot ``--skip-types customers,discounts`` (see the cutover runbook).
+        """
         plan = []
         order = [
             ("DiscountCodeNode", "mutation($id:ID!){ discountCodeDelete(id:$id){ deletedCodeDiscountId userErrors{ field message } } }", "discountCodeDelete", "id"),
@@ -1503,23 +1510,36 @@ class ShopifyAdminTarget(FakeShopifyTarget):
                          "identifier:{ownerType:$o, namespace:$ns, key:$k}, deleteAllAssociatedMetafields:true){"
                          " deletedDefinitionId userErrors{ field message } } }", "metafieldDefinitionDelete",
                          {"o": owner, "ns": namespace, "k": mkey}))
-        summary = {"store": self.store_domain, "dry_run": dry_run, "planned": len(plan), "deleted": 0, "errors": []}
+        if only is not None:
+            plan = [item for item in plan if item[0] in only]
+        summary = {"store": self.store_domain, "dry_run": dry_run, "planned": len(plan), "deleted": 0,
+                   "errors": [], "only": sorted(only) if only is not None else None}
         if dry_run:
             summary["by_resource"] = {}
             for item in plan:
                 summary["by_resource"][item[0]] = summary["by_resource"].get(item[0], 0) + 1
             return summary
+        deleted_keys: list[tuple[str, str]] = []
         for item in plan:
             resource, key, gid, mutation, result_key = item[:5]
             variables = item[5] if len(item) > 5 else {"id": gid}
             try:
                 self.client.mutate(mutation, variables, result_key)
                 summary["deleted"] += 1
+                deleted_keys.append((resource, key))
             except ShopifyAdminError as exc:
                 if "not found" in str(exc).lower() or "does not exist" in str(exc).lower():
                     summary["deleted"] += 1
+                    deleted_keys.append((resource, key))
                 else:
                     summary["errors"].append({"resource": resource, "key": key, "message": str(exc)[:300]})
+        if only is not None:
+            # Scoped purge: forget only what was deleted; the ledger stays authoritative
+            # for everything else, and a later run re-creates these from scratch.
+            for resource, key in deleted_keys:
+                self.state["objects"].get(resource, {}).pop(key, None)
+            self._flush()
+            return summary
         if not summary["errors"]:
             for path in (self.store_path, self.mapping_path, self.store_dir / "failures.json"):
                 if path.exists():
@@ -1597,6 +1617,10 @@ def main(argv):
                         help="verify: skip the handle/title/status drift comparison")
     parser.add_argument("--batch", type=int, default=NODE_BATCH,
                         help=f"verify: ids per nodes() query (default {NODE_BATCH})")
+    parser.add_argument("--only-types", default=None,
+                        help="purge: comma-separated subset to delete and forget, keeping the rest of "
+                             "the ledger. Names: customers, discounts, pages, articles, files, "
+                             "products, collections")
     args = parser.parse_args(argv[1:])
     target = ShopifyAdminTarget(Path(args.store))
     if args.command == "status":
@@ -1613,7 +1637,16 @@ def main(argv):
         print(f"reports: {target.store_dir / 'verify-result.json'}, "
               f"{target.store_dir / 'verify-report.md'}")
         return 1 if (report["summary"]["missing"] or report["summary"]["variant_count_mismatch"]) else 0
-    summary = target.purge(dry_run=not args.yes)
+    only = None
+    if args.only_types:
+        names = {"customers": "Customer", "discounts": "DiscountCodeNode", "pages": "Page",
+                 "articles": "Article", "files": "File", "products": "Product",
+                 "collections": "Collection"}
+        unknown = [n for n in args.only_types.split(",") if n.strip() not in names]
+        if unknown:
+            parser.error(f"--only-types: unknown {unknown}; choose from {sorted(names)}")
+        only = {names[n.strip()] for n in args.only_types.split(",")}
+    summary = target.purge(dry_run=not args.yes, only=only)
     print(json.dumps(summary, indent=2))
     return 1 if summary.get("errors") else 0
 

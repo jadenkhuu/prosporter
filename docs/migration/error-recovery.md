@@ -143,7 +143,13 @@ load is far shorter than that, but an interrupted-and-resumed run can straddle e
 every object the ledger created, in reverse dependency order, then removes
 `store.json`, `mapping.json` and `failures.json`. Without `--yes` it prints the plan.
 Objects already gone from the store count as deleted. If any delete errors the ledger
-files are kept, so nothing is orphaned silently. **This is a staging reset. Never run
+files are kept, so nothing is orphaned silently.
+
+`--only-types customers,discounts` scopes the purge to those resources: it deletes
+them from the store, drops just their rows from the ledger and keeps everything
+else tracked. Use it when a pre-cutover run was launched without
+`--skip-types customers,discounts` (it happened on 6 Sep 2026); the cutover step
+then re-creates them from the final export. **This is a staging reset. Never run
 it against a production store after cutover** — see the rollback section of the
 cutover runbook.
 
