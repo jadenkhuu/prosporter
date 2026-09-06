@@ -1,0 +1,229 @@
+{
+  "base": "https://prosporter.vercel.app",
+  "generated": "2026-09-06T02:13:56.132Z",
+  "headers": {
+    "access-control-allow-origin": "*",
+    "age": "1290",
+    "cache-control": "public, max-age=0, must-revalidate",
+    "content-disposition": "inline",
+    "content-encoding": "br",
+    "content-type": "text/html; charset=utf-8",
+    "date": "Sun, 06 Sep 2026 02:13:42 GMT",
+    "etag": "W/\"49fc657bc15dd868f665bd71d439b71a\"",
+    "server": "Vercel",
+    "strict-transport-security": "max-age=63072000; includeSubDomains; preload",
+    "transfer-encoding": "chunked",
+    "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "x-matched-path": "/",
+    "x-nextjs-prerender": "1",
+    "x-nextjs-stale-time": "300",
+    "x-robots-tag": "noindex, nofollow",
+    "x-vercel-cache": "HIT",
+    "x-vercel-id": "syd1::xnfht-1788660822488-6bdb54f3c7cf"
+  },
+  "httpRedirect": {
+    "status": 308,
+    "location": "https://prosporter.vercel.app/"
+  },
+  "seo": [
+    {
+      "label": "home",
+      "path": "/",
+      "status": 200,
+      "title": "ProSporter — Volleyball Teamwear &amp; Apparel",
+      "description": "Indoor and beach volleyball apparel, club teamwear and protective gear. Built for the Australian game.",
+      "canonical": "https://prosporter.vercel.app",
+      "ogTitle": "ProSporter — Volleyball Teamwear &amp; Apparel",
+      "ogDescription": "Indoor and beach volleyball apparel, club teamwear and protective gear. Built for the Australian game.",
+      "ogImage": "",
+      "ogType": "website",
+      "twitterCard": "summary",
+      "robotsMeta": "",
+      "h1Count": 1,
+      "jsonLdBlocks": 1,
+      "chunkCount": 12
+    },
+    {
+      "label": "shop",
+      "path": "/shop",
+      "status": 200,
+      "title": "Shop All · ProSporter",
+      "description": "Shop shop all at ProSporter — indoor and beach volleyball apparel, club teamwear and protective gear, shipped across Australia.",
+      "canonical": "https://prosporter.vercel.app/shop",
+      "ogTitle": "Shop All",
+      "ogDescription": "Shop shop all at ProSporter — indoor and beach volleyball apparel, club teamwear and protective gear, shipped across Australia.",
+      "ogImage": "",
+      "ogType": "website",
+      "twitterCard": "summary",
+      "robotsMeta": "",
+      "h1Count": 1,
+      "jsonLdBlocks": 2,
+      "chunkCount": 12
+    },
+    {
+      "label": "collection",
+      "path": "/shop/jerseys",
+      "status": 200,
+      "title": "Jerseys · ProSporter",
+      "description": "Shop jerseys at ProSporter — indoor and beach volleyball apparel, club teamwear and protective gear, shipped across Australia.",
+      "canonical": "https://prosporter.vercel.app/shop/jerseys",
+      "ogTitle": "Jerseys",
+      "ogDescription": "Shop jerseys at ProSporter — indoor and beach volleyball apparel, club teamwear and protective gear, shipped across Australia.",
+      "ogImage": "",
+      "ogType": "website",
+      "twitterCard": "summary",
+      "robotsMeta": "",
+      "h1Count": 1,
+      "jsonLdBlocks": 2,
+      "chunkCount": 12
+    },
+    {
+      "label": "product",
+      "path": "/product/ace-unisex",
+      "status": 200,
+      "title": "Ace Unisex - ProSporter Australia",
+      "description": "Explore peak performance with our Volleyball Sleeves. Engineered for abrasion protection, hyper elasticity, and high compression, these sleeves offer a light and breathable experience on the court.",
+      "canonical": "https://prosporter.vercel.app/product/ace-unisex",
+      "ogTitle": "Ace Unisex - ProSporter Australia",
+      "ogDescription": "Explore peak performance with our Volleyball Sleeves. Engineered for abrasion protection, hyper elasticity, and high compression, these sleeves offer a light and breathable experience on the court.",
+      "ogImage": "https://cdn.shopify.com/s/files/1/1025/4742/3597/files/thumb1024_ninesquared-ace-white-fr-U.png?v=1788590525",
+      "ogType": "website",
+      "twitterCard": "summary_large_image",
+      "robotsMeta": "",
+      "h1Count": 1,
+      "jsonLdBlocks": 2,
+      "chunkCount": 12
+    },
+    {
+      "label": "search",
+      "path": "/search?q=jersey",
+      "status": 200,
+      "title": "Search: jersey · ProSporter",
+      "description": "Search the ProSporter range of indoor and beach volleyball gear.",
+      "canonical": "",
+      "ogTitle": "ProSporter — Volleyball Teamwear &amp; Apparel",
+      "ogDescription": "Indoor and beach volleyball apparel, club teamwear and protective gear. Built for the Australian game.",
+      "ogImage": "",
+      "ogType": "website",
+      "twitterCard": "summary",
+      "robotsMeta": "noindex, follow",
+      "h1Count": 1,
+      "jsonLdBlocks": 1,
+      "chunkCount": 12
+    },
+    {
+      "label": "blog",
+      "path": "/blog",
+      "status": 200,
+      "title": "Journal · ProSporter",
+      "description": "News, guides and product notes from the ProSporter team.",
+      "canonical": "https://prosporter.vercel.app/blog",
+      "ogTitle": "Journal · ProSporter",
+      "ogDescription": "News, guides and product notes from the ProSporter team.",
+      "ogImage": "",
+      "ogType": "website",
+      "twitterCard": "summary",
+      "robotsMeta": "",
+      "h1Count": 1,
+      "jsonLdBlocks": 1,
+      "chunkCount": 11
+    },
+    {
+      "label": "article",
+      "path": "/blog/how-to-choose-the-right-sport-merchant-for-your-business",
+      "status": 200,
+      "title": "How to Choose the Right Sport Merchant for Your Business - ProSporter Australia",
+      "description": "Running a sports-related business can be an exciting venture, but finding the right sport merchant to partner with is crucial for success. Whether you own a gym, sell sports equipment, or offer sports-related services, having a reliable and efficient sport merchant can streamline your operations...",
+      "canonical": "https://prosporter.vercel.app/blog/how-to-choose-the-right-sport-merchant-for-your-business",
+      "ogTitle": "How to Choose the Right Sport Merchant for Your Business - ProSporter Australia",
+      "ogDescription": "Running a sports-related business can be an exciting venture, but finding the right sport merchant to partner with is crucial for success. Whether you own a gym, sell sports equipment, or offer sports-related services, having a reliable and efficient sport merchant can streamline your operations...",
+      "ogImage": "",
+      "ogType": "article",
+      "twitterCard": "summary",
+      "robotsMeta": "",
+      "h1Count": 1,
+      "jsonLdBlocks": 2,
+      "chunkCount": 11
+    },
+    {
+      "label": "contact",
+      "path": "/contact",
+      "status": 200,
+      "title": "Contact - ProSporter Australia",
+      "description": "If you have any questions, concerns, feedback or want to partner up please feel free to reach out!",
+      "canonical": "https://prosporter.vercel.app/contact",
+      "ogTitle": "Contact - ProSporter Australia",
+      "ogDescription": "If you have any questions, concerns, feedback or want to partner up please feel free to reach out!",
+      "ogImage": "",
+      "ogType": "article",
+      "twitterCard": "summary",
+      "robotsMeta": "",
+      "h1Count": 1,
+      "jsonLdBlocks": 2,
+      "chunkCount": 12
+    },
+    {
+      "label": "not-found",
+      "path": "/qa-404-check-clnt-179",
+      "status": 404,
+      "title": "Page not found · ProSporter",
+      "description": "Indoor and beach volleyball apparel, club teamwear and protective gear. Built for the Australian game.",
+      "canonical": "",
+      "ogTitle": "ProSporter — Volleyball Teamwear &amp; Apparel",
+      "ogDescription": "Indoor and beach volleyball apparel, club teamwear and protective gear. Built for the Australian game.",
+      "ogImage": "",
+      "ogType": "website",
+      "twitterCard": "summary",
+      "robotsMeta": "noindex",
+      "h1Count": 0,
+      "jsonLdBlocks": 0,
+      "chunkCount": 6
+    }
+  ],
+  "chunksScanned": 16,
+  "secretFindings": [],
+  "cartAdded": true,
+  "cartCookie": {
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "Lax",
+    "path": "/",
+    "session": false
+  },
+  "webhook": {
+    "status": 401,
+    "rejected": true
+  },
+  "defects": [
+    {
+      "sev": "medium",
+      "what": "X-Content-Type-Options header absent or wrong on HTML responses",
+      "url": "https://prosporter.vercel.app/"
+    },
+    {
+      "sev": "medium",
+      "what": "Referrer-Policy header absent or wrong on HTML responses",
+      "url": "https://prosporter.vercel.app/"
+    },
+    {
+      "sev": "medium",
+      "what": "X-Frame-Options / frame-ancestors header absent or wrong on HTML responses",
+      "url": "https://prosporter.vercel.app/"
+    },
+    {
+      "sev": "low",
+      "what": "Content-Security-Policy header absent or wrong on HTML responses",
+      "url": "https://prosporter.vercel.app/"
+    },
+    {
+      "sev": "low",
+      "what": "Permissions-Policy header absent or wrong on HTML responses",
+      "url": "https://prosporter.vercel.app/"
+    },
+    {
+      "sev": "low",
+      "what": "Canonical link missing on: search, not-found",
+      "url": "https://prosporter.vercel.app"
+    }
+  ]
+}
