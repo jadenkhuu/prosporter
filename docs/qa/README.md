@@ -93,3 +93,22 @@ else is graded by impact on acceptance.
 4. **One live test order** through Shopify checkout covering cart update, a discount code, shipping calculation, payment and order confirmation (section 3 criterion 3).
 5. **Field Web Vitals** once traffic exists, to close the INP half of section 3 criterion 2.
 6. **Fix D1 and D3**, both of which are outright failures against sections 1.1 and 3.1 rather than pending evidence.
+
+## Defect status after the 6 Sep 2026 fix pass
+
+| ID | Status | Commit | Note |
+|---|---|---|---|
+| D1 | Fixed | `07baeb2` | Gallery grid item gets `min-w-0`; all 8 overflowing products verified at 375 px |
+| D2 | Fixed | `e4e908a` | Help and Company/Legal footer columns link every content page and the blog |
+| D3 | Fixed | `3127c43` | Home 2.25 s, collection 2.36 s, product 2.43 s on Vercel; see `performance.md` history |
+| D4 | Fixed | `b47903c` | Six held products 308 to their primary collection until loaded |
+| D5 | Fixed | `e4e908a` | nosniff, referrer-policy, X-Frame-Options, Permissions-Policy |
+| D6 | Fixed | `e4e908a` | Static CSP; WordPress origins stay in `img-src` until CLNT-323's live run |
+| D7 | Fixed | `07baeb2` | Default 1200x630 OG image on every non-product page |
+| D8 | Fixed | `07baeb2` | 404 route has its own description and noindex; `/search` self-canonical |
+| D9 | Fixed | `07baeb2` | Add to bag disabled with a hint until a purchasable variant is chosen |
+
+New since the pass: CLNT-323, migrated page bodies hotlink images from the WordPress
+domain (breaks at cutover). Pipeline fix committed in `e253b17`; live run pending.
+Crawl, console/responsive and header checks have not been re-run after these commits;
+re-run `scripts/qa/*.mjs` before the pack goes to the client.
