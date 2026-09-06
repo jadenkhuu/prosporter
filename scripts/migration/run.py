@@ -59,6 +59,7 @@ from common import (  # noqa: E402
     SHOPIFY_API_VERSION,
     git_rev,
     rel,
+    read_json,
     read_jsonl,
     utc_now,
     write_json,
@@ -486,10 +487,21 @@ def main(argv=None):
         stage_reconcile(data, records, target, exc, args, run_dir, run_id)
         write_exceptions(run_dir, exc)
 
-    write_json(run_dir / "run-manifest.json", run_manifest(
+    manifest_path = run_dir / "run-manifest.json"
+    manifest = run_manifest(
         run_id, args.source, "see source-summary.json", args.target, [args.stage],
         {"store_dir": rel(Path(args.store) if args.store else DEFAULT_STORE)},
-    ))
+    )
+    if manifest_path.exists():
+        # A single-stage rerun (typically `reconcile` against an existing ledger,
+        # to regenerate the docs without touching the store) must not erase what
+        # the full run recorded: keep that manifest and add this stage to it.
+        previous = read_json(manifest_path)
+        previous["stages"] = sorted(set(previous.get("stages") or []) | {args.stage})
+        for field in ("generated_at", "script_commit", "pipeline_version", "store_dir"):
+            previous[field] = manifest[field]
+        manifest = previous
+    write_json(manifest_path, manifest)
     return 0
 
 

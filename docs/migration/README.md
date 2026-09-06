@@ -466,6 +466,32 @@ products, 13 variants, 12 media, 13 inventory items, 10 memberships, 4 metafield
 failures; rerun 70 unchanged / 0 created. Note the store's default `frontpage` collection is
 automated and picked up Ace Unisex by tag; the client decides whether to keep it.
 
+### Prune stale ledger rows (`shopify_target.py prune-stale`)
+
+Ledger hygiene for the one case `verify` can see but not fix: a `ProductVariant`
+(and its `InventoryItem`) row for a variant the transform no longer loads, whose
+variant either no longer exists on the store or is really owned by another ledger
+row that is still loaded (two WooCommerce variations that collapsed onto one
+Shopify variant). It reads the store with the same `nodes(ids:)` lookup `verify`
+uses and writes only the local ledger — it never deletes anything on Shopify.
+
+```bash
+# dry run: print every row it would drop and why
+python3 scripts/migration/shopify_target.py prune-stale \
+    --store exports/migration/live-store --run exports/migration/<run-id>
+# apply it to the ledger
+python3 scripts/migration/shopify_target.py prune-stale \
+    --store exports/migration/live-store --run exports/migration/<run-id> --yes
+```
+
+`--run` is the run directory (or `variants.jsonl`) whose transform output says
+which variants are still loaded. A held row that is the **only** ledger row for a
+live variant is never dropped: it is reported as `variant_live_but_held` and the
+command exits 1 so a human decides. The same rule runs automatically at the end
+of every live load (`finish()`), so a delta run heals the ledger by itself.
+Report: `<store>/prune-result.json`. Full account in
+[error-recovery.md](error-recovery.md#5b-a-ledger-row-the-transform-later-held-stale-ledger-hygiene-clnt-305).
+
 ## Normalization decisions applied automatically
 
 1. `Color` and `Colour` merge into one `Colour` option.

@@ -6,14 +6,14 @@ customers appear as counts, never as names or addresses.
 | Field | Value |
 |---|---|
 | Run id | `delta-20260906` |
-| Generated | 2026-09-06T04:59:38+00:00 |
+| Generated | 2026-09-06T05:14:56+00:00 |
 | Source snapshot | 2026-09-05T04:13:43.213180+00:00 |
 | Source directory | `exports` |
 | Target | `shopify` |
 | Shopify API version | `2026-07` |
-| Pipeline commit | `1924cac565babc91740f543ae32f6cdb1878a97c` |
+| Pipeline commit | `b6a98bccf14b61a0a12c6b16187dd5c5bd224482` |
 
-**22 matched, 21 explained, 1 unexplained** out of 44 checks.
+**23 matched, 21 explained, 0 unexplained** out of 44 checks.
 
 ## Reconciliation checks
 
@@ -42,8 +42,8 @@ customers appear as counts, never as names or addresses.
 | variants_without_regular_price_in_source | 56 | 11 | 0 | explained | 45 inherit the parent product price; 11 have no price anywhere and are held pending client-supplied prices |
 | held_variants_missing_option_value | 0 | 62 | 0 | explained | WooCommerce 'Any <option>' variations have no Shopify equivalent |
 | held_variants_total | 0 | 144 | 0 | explained | held variants = missing price + missing option value + variants of held products |
-| inventory_item_count | 779 | 782 | 0 | mismatch |  |
-| inventory_staged_quantity_total | 6514 | 6444 | 0 | explained | held variants carry their stock out of the total |
+| inventory_item_count | 779 | 779 | 0 | match |  |
+| inventory_staged_quantity_total | 6514 | 6432 | 0 | explained | held variants carry their stock out of the total |
 | page_count | 30 | 22 | 0 | explained | WooCommerce functional pages (cart/checkout/account) are storefront routes |
 | article_count | 15 | 15 | 0 | match |  |
 | body_image_references_in_source | 579 | 523 | 56 | explained | 56 reference(s) sit in held pages the storefront owns and are never loaded |
@@ -117,13 +117,13 @@ Reasons: attribute_needs_decision (8), bundle_product (1)
 | Article | 15 |
 | Collection | 10 |
 | CollectionMembership | 10 |
-| Customer | 176 |
-| DiscountCodeNode | 5 |
+| Customer | 0 |
+| DiscountCodeNode | 0 |
 | File | 46 |
-| InventoryItem | 782 |
+| InventoryItem | 779 |
 | MediaImage | 469 |
 | Metafield | 394 |
 | MetafieldDefinition | 6 |
 | Page | 21 |
 | Product | 154 |
-| ProductVariant | 782 |
+| ProductVariant | 779 |

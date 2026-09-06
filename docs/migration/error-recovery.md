@@ -24,6 +24,7 @@ on disk is never more optimistic than the store.
 | `<run-id>/exceptions.jsonl` | run dir | the same failures as structured exceptions, `code: load_failed`, `severity: high`, `owner: purpl`, `retry_status: auto-retryable`. |
 | `<run-id>/load-result.json` | run dir | per-record outcome (`created` / `updated` / `unchanged` / `failed`) and the `stats` totals. |
 | `<store>/verify-result.json`, `verify-report.md` | ledger dir | read-only ledger-vs-store comparison (`shopify_target.py verify`). |
+| `<store>/prune-result.json` | ledger dir | the stale-ledger-row plan and what was dropped (`shopify_target.py prune-stale`, and the same prune inside `finish()`). |
 
 ## Failure classes
 
@@ -136,6 +137,76 @@ load is far shorter than that, but an interrupted-and-resumed run can straddle e
 * `mapping.json` is also written by `finish()`, so after an interruption it can lag
   `store.json`. `store.json` is the source of truth; `mapping.json` is regenerated on
   the next run.
+
+### 5b. A ledger row the transform later held (stale ledger hygiene, CLNT-305)
+
+The ledger records what the store confirmed at the time. A transform rule added
+*after* a load can hold a variant that is already in the ledger, and then the
+ledger is one row ahead of both the store and the transform.
+
+That is what happened to three products on 5-6 Sep 2026. WooCommerce had two
+variations with the same colour/size on
+`provolley-womens-volleyball-jersey-sydney-australia`,
+`provolley-women-shorts-navy-white-yellow` and
+`innerwestvolley-womens-shorts-black-white`. Shopify allows one variant per
+option combination, so the second variation matched the first one's live variant
+by option set, went down the `productVariantsBulkUpdate` path and was written
+into the ledger under its own key **with the first variant's gid**. Nothing was
+lost on the store and nothing failed: two ledger rows simply pointed at one live
+variant. `verify` reported `missing: 0` (every gid does exist) and
+`variant_count_mismatch: 3` (ledger 25/22/17 against live 24/21/16), and
+`inventory_item_count` reconciled 779 against 782. The transform now holds the
+second variation (`duplicate_option_combination`), so those rows were also
+orphaned from the transform.
+
+`finish()` now heals this automatically. `_prune_stale_variants()` looks at every
+`ProductVariant` row the ledger holds that this run's transform no longer loads,
+restricted to the products the run actually processed, and asks the store
+(`nodes(ids:)`, presence only) about just those ids:
+
+| The held row's variant | What happens |
+|---|---|
+| not on the store | the row is a phantom: dropped from the ledger |
+| on the store, and its gid is also owned by a ledger row that is still loaded | the two source variations collapsed onto one live variant: the held row is dropped, the loaded row keeps the variant |
+| on the store, and this row is its only owner | **nothing is dropped**; a `variant_live_but_held` exception (high, needs-decision) names the row so a human decides whether the variant stays on the store |
+
+The matching `InventoryItem` row is dropped with its variant under the same test.
+This is ledger hygiene only: it reads the store and writes `store.json` /
+`mapping.json`. It never issues a delete, so a live variant can never be removed
+by it.
+
+To apply it without a load, from the transform output of an existing run:
+
+```
+# dry run: prints every row it would drop and why, touches nothing
+python3 scripts/migration/shopify_target.py prune-stale \
+    --store exports/migration/live-store --run exports/migration/<run-id>
+# drop them (local ledger write only; --run supplies the loadable variant keys)
+python3 scripts/migration/shopify_target.py prune-stale \
+    --store exports/migration/live-store --run exports/migration/<run-id> --yes
+```
+
+It writes `<store>/prune-result.json` beside the verify reports and exits 1 when
+anything is `variant_live_but_held`. Run `verify` afterwards; on 6 Sep 2026 it
+dropped 3 `ProductVariant` and 3 `InventoryItem` rows (782 -> 779 each) and
+`variant_count_mismatch` went 3 -> 0 with `missing` still 0. The docs are then
+regenerated from the corrected ledger without touching the store:
+
+```
+python3 scripts/migration/run.py reconcile --run-id <run-id> \
+    --target shopify --store exports/migration/live-store
+```
+
+The reconcile stage reads the run directory's transform output and the ledger
+only - no Admin API write, and no load. `inventory_item_count` reconciles 779
+against 779 after the prune.
+
+`scripts/migration/tests/test_pipeline.py::StaleLedgerPrune` pins the rule down
+against a stub Admin client: the collapsed row and the phantom row are dropped
+with their inventory items, the live-but-held row survives with a
+`variant_live_but_held` exception, a row the transform still loads is never a
+candidate even when it is missing on the store, and the stub fails the test if
+any mutation is sent.
 
 ### 6. Starting over (staging only)
 

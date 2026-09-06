@@ -34,13 +34,18 @@ Beyond the loader this module owns two post-load operations:
   * ``publish`` (driven by ``run.py publish``) exposes loaded products and
     collections to a named publication and, with ``activate_published``, sets
     ACTIVE only the products whose source status was ``publish``.
-  * ``verify`` (CLI, read-only) compares the ledger with the live store.
+  * ``verify`` (CLI, read-only) compares the ledger with the live store, and
+    ``prune-stale`` drops ledger rows for variants the transform no longer loads
+    and Shopify no longer has (or never had) as their own variant. Both read the
+    store; only the local ledger is written.
 
 CLI::
 
     python3 scripts/migration/shopify_target.py status --store <ledger>
     python3 scripts/migration/shopify_target.py verify --store <ledger>
     python3 scripts/migration/shopify_target.py purge  --store <ledger> [--yes]
+    python3 scripts/migration/shopify_target.py prune-stale --store <ledger> \
+        --run exports/migration/<run-id> [--yes]
 """
 from __future__ import annotations
 
@@ -120,6 +125,12 @@ class ShopifyAdminTarget(FakeShopifyTarget):
         self.stats["failed"] = 0
         self.failures: list[dict] = []
         self.warnings: list[dict] = []  # record loaded, but with a caveat worth surfacing
+        # Structured notices the loader turns into exceptions after finish().
+        self.notices: list[dict] = []
+        # resource -> identity keys this run put through upsert(); the input to
+        # the stale-ledger prune in finish().
+        self._loaded_keys: dict[str, set[str]] = {}
+        self.stale_prune: dict | None = None
         self.deferred_variant_media: list[tuple[str, str, str, str]] = []  # (product, variant, media, key)
         self._variant_cache: dict[str, list[dict]] = {}
         self._touched_products: set[str] = set()  # products whose variants this run wrote
@@ -159,6 +170,7 @@ class ShopifyAdminTarget(FakeShopifyTarget):
         )
         bucket[outcome] += 1
         self.mapping.setdefault(resource, {})[key] = gid
+        self._loaded_keys.setdefault(resource, set()).add(key)
         return gid, outcome
 
     def _fail(self, resource, key, message):
@@ -178,6 +190,7 @@ class ShopifyAdminTarget(FakeShopifyTarget):
 
     def finish(self) -> None:
         self._prune_placeholder_variants()
+        self._prune_stale_variants()
         self._attach_deferred_variant_media()
         super().finish()
         write_json(self.store_dir / "failures.json", {
@@ -186,6 +199,7 @@ class ShopifyAdminTarget(FakeShopifyTarget):
             "count": len(self.failures),
             "failures": self.failures,
             "warnings": self.warnings,
+            "notices": self.notices,
         })
 
     def gid(self, resource: str, key: str):
@@ -488,6 +502,187 @@ class ShopifyAdminTarget(FakeShopifyTarget):
             except ShopifyAdminError as exc:
                 self._fail("ProductVariant", product_gid, f"placeholder variant delete failed: {exc}")
             self._variant_cache.pop(product_gid, None)
+
+    # ------------------------------------------------- stale ledger variants
+    # Presence-only: nothing but the id and type is read back, so no personal
+    # data can enter a prune plan.
+    STALE_QUERY = "query($ids:[ID!]!){ nodes(ids:$ids){ id __typename } }"
+
+    def _live_ids(self, gids, batch_size: int = NODE_BATCH) -> set[str]:
+        """Read-only ``nodes()`` lookup: which of these gids still exist."""
+        found: set[str] = set()
+        for chunk in _chunks(sorted(gids), batch_size):
+            data = self.client.graphql(self.STALE_QUERY, {"ids": chunk})
+            for node in data.get("nodes") or []:
+                if node:
+                    found.add(node["id"])
+        return found
+
+    def stale_variant_plan(self, loaded_keys, product_keys=None,
+                           batch_size: int = NODE_BATCH) -> dict:
+        """Plan the ledger rows to drop for variants the transform no longer loads.
+
+        ``loaded_keys`` is the set of ``ProductVariant`` identity keys the current
+        transform still produces (``woo:<variation id>``). Anything in the ledger
+        outside that set is *held* — usually by a transform rule added after the
+        row was loaded — and falls into one of three cases:
+
+        * the variant is **not on the store** — a phantom row; drop it.
+        * the variant is on the store but its gid is **also claimed by a ledger row
+          that is still loaded** — the two source variations collapsed onto one
+          Shopify variant (Shopify allows one variant per option combination), so
+          the live variant belongs to the surviving row; drop the held duplicate.
+        * the variant is on the store and **only this row owns it** — dropping the
+          row would orphan a live variant, so it is reported as
+          ``variant_live_but_held`` for a human decision and nothing is dropped.
+
+        The matching ``InventoryItem`` row is dropped with its variant under the
+        same test. This is ledger hygiene: it reads the store and writes only
+        ``store.json`` / ``mapping.json``. It never deletes anything on Shopify.
+        """
+        variants = self.state["objects"].get("ProductVariant", {})
+        inventory = self.state["objects"].get("InventoryItem", {})
+        loaded = set(loaded_keys or ())
+        scope = set(product_keys) if product_keys else None
+
+        owners: dict[str, list[str]] = {}
+        for key, entry in variants.items():
+            owners.setdefault(entry["id"], []).append(key)
+        inv_owners: dict[str, list[str]] = {}
+        for key, entry in inventory.items():
+            inv_owners.setdefault(entry["id"], []).append(key)
+
+        candidates = []
+        for key, entry in sorted(variants.items()):
+            if key in loaded:
+                continue
+            handle = (entry.get("payload") or {}).get("product_handle")
+            if scope is not None and handle not in scope:
+                continue  # this run did not touch the product; leave its rows alone
+            candidates.append((key, entry, handle))
+
+        gids = {entry["id"] for _, entry, _ in candidates}
+        gids.update(inventory[key]["id"] for key, _, _ in candidates if key in inventory)
+        calls_before = getattr(self.client, "calls", 0)
+        live = self._live_ids(gids, batch_size) if gids else set()
+
+        drop, live_but_held = [], []
+        for key, entry, handle in candidates:
+            gid = entry["id"]
+            kept = sorted(k for k in owners.get(gid, []) if k != key and k in loaded)
+            if gid not in live:
+                reason, note = "not_on_store", None
+            elif kept:
+                reason, note = "collapsed_onto_loaded_variant", kept[0]
+            else:
+                live_but_held.append({
+                    "key": key, "id": gid, "product_handle": handle,
+                    "message": "held by the transform but still the only ledger row for a "
+                               "live variant; decide whether to keep the variant on the "
+                               "store or delete it before pruning the ledger row",
+                })
+                continue
+            drop.append({"resource": "ProductVariant", "key": key, "id": gid,
+                         "product_handle": handle, "reason": reason, "kept_key": note})
+            inv = inventory.get(key)
+            if inv is None:
+                continue
+            inv_gid = inv["id"]
+            inv_kept = sorted(k for k in inv_owners.get(inv_gid, []) if k != key and k in loaded)
+            if inv_gid in live and not inv_kept:
+                live_but_held.append({
+                    "key": key, "id": inv_gid, "product_handle": handle,
+                    "message": "inventory item is live and owned only by this held ledger row",
+                })
+                continue
+            drop.append({
+                "resource": "InventoryItem", "key": key, "id": inv_gid,
+                "product_handle": handle,
+                "reason": "not_on_store" if inv_gid not in live else "collapsed_onto_loaded_variant",
+                "kept_key": inv_kept[0] if inv_kept else None,
+            })
+
+        return {
+            "generated_at": utc_now(),
+            "store": self.store_domain,
+            "store_dir": str(self.store_dir),
+            "api_version": SHOPIFY_API_VERSION,
+            "candidates": len(candidates),
+            "ids_checked": len(gids),
+            "api_calls": getattr(self.client, "calls", 0) - calls_before,
+            "summary": {
+                "variants_dropped": sum(1 for d in drop if d["resource"] == "ProductVariant"),
+                "inventory_items_dropped": sum(1 for d in drop if d["resource"] == "InventoryItem"),
+                "live_but_held": len(live_but_held),
+            },
+            "drop": drop,
+            "variant_live_but_held": live_but_held,
+            "applied": False,
+        }
+
+    def apply_stale_variant_plan(self, plan: dict) -> dict:
+        """Remove the planned rows from the ledger. Local file write only."""
+        for row in plan["drop"]:
+            self.state["objects"].get(row["resource"], {}).pop(row["key"], None)
+            self.mapping.get(row["resource"], {}).pop(row["key"], None)
+        if plan["drop"]:
+            self._flush()
+        plan["applied"] = True
+        return plan
+
+    def prune_mapping(self, dropped) -> None:
+        """Drop pruned keys from mapping.json without a store call.
+
+        Only used by the CLI: a normal run rewrites mapping.json from scratch in
+        ``finish()``. Secondary indexes keep any gid that some ledger row still
+        owns (a collapsed duplicate shares its gid with the surviving row).
+        """
+        if not self.mapping_path.exists():
+            return
+        doc = read_json(self.mapping_path)
+        resources = doc.get("resources") or {}
+        for row in dropped:
+            resources.get(row["resource"], {}).pop(row["key"], None)
+        live_ids = {entry["id"] for objects in self.state["objects"].values()
+                    for entry in objects.values()}
+        for entries in (doc.get("indexes") or {}).values():
+            for key in list(entries):
+                kept = [gid for gid in entries[key] if gid in live_ids]
+                if kept:
+                    entries[key] = kept
+                else:
+                    entries.pop(key)
+        write_json(self.mapping_path, doc)
+
+    def _prune_stale_variants(self) -> None:
+        """``finish()`` hook: keep the ledger in step with the transform.
+
+        Runs only when this run actually loaded variants, and only judges rows
+        whose product this run also processed, so a scoped run
+        (``--only-products`` / ``--only-types``) never prunes rows it cannot see.
+        """
+        loaded = self._loaded_keys.get("ProductVariant")
+        if not loaded:
+            return
+        try:
+            plan = self.stale_variant_plan(loaded, product_keys=self._loaded_keys.get("Product"))
+        except ShopifyAdminError as exc:
+            self._warn("ProductVariant", "stale-prune", f"stale prune check failed: {exc}")
+            return
+        if plan["drop"]:
+            self.apply_stale_variant_plan(plan)
+            for row in plan["drop"]:
+                self._warn(row["resource"], row["key"],
+                           f"stale ledger row pruned ({row['reason']}); the store was not touched")
+        for row in plan["variant_live_but_held"]:
+            self.notices.append({
+                "code": "variant_live_but_held", "resource": "ProductVariant",
+                "key": row["key"], "product_handle": row["product_handle"],
+                "message": row["message"],
+            })
+        self.stale_prune = plan
+        if plan["drop"] or plan["variant_live_but_held"]:
+            write_json(self.store_dir / "prune-result.json", plan)
 
     # ------------------------------------------------------------------- media
     def _media_ids(self, product_gid: str) -> set[str]:
@@ -1547,6 +1742,31 @@ class ShopifyAdminTarget(FakeShopifyTarget):
         return summary
 
 
+def loaded_variant_keys(path: Path) -> tuple[set[str], set[str]]:
+    """(variant identity keys, product handles) the transform output still loads.
+
+    ``path`` is a run directory or the ``variants.jsonl`` inside one. Held rows
+    are excluded, which is exactly what the loader does.
+    """
+    variants = path if path.is_file() else path / "variants.jsonl"
+    if not variants.exists():
+        raise SystemExit(f"no transform output at {variants}")
+    keys, handles = set(), set()
+    with open(variants, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            record = json.loads(line)
+            handles.add(record.get("product_handle"))
+            if record.get("held"):
+                continue
+            keys.add(f"woo:{record['source']['woo_id']}")
+    if not keys:
+        raise SystemExit(f"{variants} holds no loadable variants; refusing to prune")
+    return keys, handles
+
+
 def _verify_markdown(report: dict) -> str:
     """Short, PII-free markdown summary of a verify run."""
     summary = report["summary"]
@@ -1610,9 +1830,13 @@ def _verify_markdown(report: dict) -> str:
 def main(argv):
     import argparse
     parser = argparse.ArgumentParser(description="Live Shopify target maintenance")
-    parser.add_argument("command", choices=["purge", "status", "verify"])
+    parser.add_argument("command", choices=["purge", "status", "verify", "prune-stale"])
     parser.add_argument("--store", required=True, help="ledger directory used by the live load")
-    parser.add_argument("--yes", action="store_true", help="actually delete (purge defaults to a dry run)")
+    parser.add_argument("--yes", action="store_true",
+                        help="actually delete (purge and prune-stale default to a dry run)")
+    parser.add_argument("--run", default=None,
+                        help="prune-stale: run directory (or variants.jsonl) holding the "
+                             "transform output that says which variants are still loaded")
     parser.add_argument("--no-checksums", action="store_true",
                         help="verify: skip the handle/title/status drift comparison")
     parser.add_argument("--batch", type=int, default=NODE_BATCH,
@@ -1637,6 +1861,29 @@ def main(argv):
         print(f"reports: {target.store_dir / 'verify-result.json'}, "
               f"{target.store_dir / 'verify-report.md'}")
         return 1 if (report["summary"]["missing"] or report["summary"]["variant_count_mismatch"]) else 0
+    if args.command == "prune-stale":
+        if not args.run:
+            parser.error("prune-stale needs --run <run dir|variants.jsonl>: the transform "
+                         "output that says which variants are still loaded")
+        loaded, products = loaded_variant_keys(Path(args.run))
+        plan = target.stale_variant_plan(loaded, product_keys=products, batch_size=args.batch)
+        if args.yes and plan["drop"]:
+            target.apply_stale_variant_plan(plan)
+            target.prune_mapping(plan["drop"])
+        write_json(target.store_dir / "prune-result.json", plan)
+        print(json.dumps({k: v for k, v in plan.items()
+                          if k not in ("drop", "variant_live_but_held")}, indent=2))
+        for row in plan["drop"]:
+            print(f"{'dropped' if plan['applied'] else 'would drop'} "
+                  f"{row['resource']:<14} {row['key']:<12} {row['reason']}"
+                  + (f" (kept {row['kept_key']})" if row.get("kept_key") else ""))
+        for row in plan["variant_live_but_held"]:
+            print(f"variant_live_but_held {row['key']} ({row['product_handle']}): {row['message']}")
+        if not plan["applied"] and plan["drop"]:
+            print("dry run: add --yes to drop these rows from the ledger "
+                  "(local file only; the store is never written)")
+        print(f"report: {target.store_dir / 'prune-result.json'}")
+        return 1 if plan["variant_live_but_held"] else 0
     only = None
     if args.only_types:
         names = {"customers": "Customer", "discounts": "DiscountCodeNode", "pages": "Page",

@@ -299,6 +299,16 @@ def load(records: dict, target: Target, exc, skip_types=(), only_products=None, 
                 "outcome": outcome,
             })
     target.finish()
+    # finish() can discover things only a human can settle - e.g. a ledger row
+    # the transform now holds whose variant is still live on the store. They are
+    # never store writes; they are exceptions with a named code.
+    for notice in getattr(target, "notices", []):
+        exc.add(
+            record_type="variant", record_id=None, record_ref=notice["key"],
+            stage=STAGE, severity="high", code=notice["code"],
+            message=notice["message"], owner=OWNER_AGENCY, retry_status="needs-decision",
+            detail={k: v for k, v in notice.items() if k not in ("code", "key", "message")},
+        )
     return {
         "results": results,
         "stats": dict(target.stats) if hasattr(target, "stats") else {},

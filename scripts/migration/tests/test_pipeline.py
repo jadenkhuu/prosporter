@@ -1025,5 +1025,163 @@ class BodyImagePipeline(unittest.TestCase):
                 checks["wordpress_image_references_left_in_loaded_bodies"]["status"], "match")
 
 
+class StaleLedgerStubClient:
+    """Answers the read-only ``nodes(ids:)`` liveness lookup and the per-product
+    variant read. Any mutation is a test failure: pruning stale ledger rows must
+    never write to the store."""
+
+    def __init__(self, live_ids, product_variants=()):
+        self.domain = "stub.myshopify.com"
+        self.calls = 0
+        self.live_ids = set(live_ids)
+        self.product_variants = list(product_variants)
+        self.mutations: list[str] = []
+
+    def graphql(self, query, variables=None):
+        self.calls += 1
+        if "nodes(ids:" in query:
+            return {"nodes": [{"id": gid, "__typename": "ProductVariant"}
+                              if gid in self.live_ids else None
+                              for gid in variables["ids"]]}
+        if "variants(first:250)" in query:
+            return {"product": {"variants": {"nodes": self.product_variants}}}
+        raise AssertionError(f"unexpected query: {query[:80]}")
+
+    def mutate(self, query, variables, result_key):
+        self.calls += 1
+        self.mutations.append(result_key)
+        raise AssertionError(f"the prune must not mutate the store ({result_key})")
+
+
+class StaleLedgerPrune(unittest.TestCase):
+    """A ledger row for a variant the transform now holds is dropped only when
+    the store proves the row owns nothing: the variant is gone, or its gid still
+    belongs to a ledger row that is still loaded (two source variations that
+    collapsed onto one Shopify variant). A held row that is the sole owner of a
+    live variant is reported, never dropped. See docs/migration/error-recovery.md.
+    """
+
+    LEDGER = {
+        "api_version": "2026-07",
+        "store": "stub.myshopify.com",
+        "counters": {},
+        "objects": {
+            "Product": {"p1": {"id": "gid://shopify/Product/1", "checksum": "c",
+                               "payload": {"handle": "p1"}}},
+            "ProductVariant": {
+                # loaded, live
+                "woo:1": {"id": "gid://shopify/ProductVariant/1", "checksum": "c",
+                          "payload": {"product_handle": "p1", "sku": "A-1"}},
+                # held; collapsed onto woo:1 (same option combination)
+                "woo:2": {"id": "gid://shopify/ProductVariant/1", "checksum": "c",
+                          "payload": {"product_handle": "p1", "sku": "A-2"}},
+                # held; nothing on the store answers for it
+                "woo:3": {"id": "gid://shopify/ProductVariant/3", "checksum": "c",
+                          "payload": {"product_handle": "p1", "sku": "A-3"}},
+                # held; sole owner of a variant that is still live
+                "woo:4": {"id": "gid://shopify/ProductVariant/4", "checksum": "c",
+                          "payload": {"product_handle": "p1", "sku": "A-4"}},
+            },
+            "InventoryItem": {
+                "woo:1": {"id": "gid://shopify/InventoryItem/1", "checksum": "c",
+                          "payload": {"product_handle": "p1"}},
+                "woo:2": {"id": "gid://shopify/InventoryItem/1", "checksum": "c",
+                          "payload": {"product_handle": "p1"}},
+                "woo:3": {"id": "gid://shopify/InventoryItem/3", "checksum": "c",
+                          "payload": {"product_handle": "p1"}},
+            },
+        },
+        "aux": {}, "file_urls": {},
+    }
+    LIVE = {"gid://shopify/ProductVariant/1", "gid://shopify/ProductVariant/4",
+            "gid://shopify/InventoryItem/1"}
+
+    def _target(self, tmp, live=None):
+        import json as _json
+        import shopify_target
+        store_dir = Path(tmp) / "ledger"
+        store_dir.mkdir(parents=True)
+        (store_dir / "store.json").write_text(_json.dumps(self.LEDGER), encoding="utf-8")
+        client = StaleLedgerStubClient(self.LIVE if live is None else live)
+        return shopify_target.ShopifyAdminTarget(store_dir, client=client), client, store_dir
+
+    def test_stale_rows_are_dropped_and_a_live_held_variant_is_only_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target, client, store_dir = self._target(tmp)
+            plan = target.stale_variant_plan({"woo:1"})
+
+            dropped = {(r["resource"], r["key"]): r["reason"] for r in plan["drop"]}
+            self.assertEqual(dropped, {
+                ("ProductVariant", "woo:2"): "collapsed_onto_loaded_variant",
+                ("InventoryItem", "woo:2"): "collapsed_onto_loaded_variant",
+                ("ProductVariant", "woo:3"): "not_on_store",
+                ("InventoryItem", "woo:3"): "not_on_store",
+            })
+            self.assertEqual([r["key"] for r in plan["variant_live_but_held"]], ["woo:4"])
+            self.assertEqual(plan["summary"],
+                             {"variants_dropped": 2, "inventory_items_dropped": 2,
+                              "live_but_held": 1})
+            self.assertFalse(plan["applied"])
+            self.assertFalse(client.mutations)
+            # A dry plan changes nothing on disk.
+            self.assertEqual(len(json_load(store_dir / "store.json")["objects"]["ProductVariant"]), 4)
+
+            target.apply_stale_variant_plan(plan)
+            self.assertEqual(sorted(target.state["objects"]["ProductVariant"]),
+                             ["woo:1", "woo:4"])
+            self.assertEqual(sorted(target.state["objects"]["InventoryItem"]), ["woo:1"])
+            # The live-but-held variant keeps its ledger row and its id.
+            self.assertEqual(target.state["objects"]["ProductVariant"]["woo:4"]["id"],
+                             "gid://shopify/ProductVariant/4")
+            self.assertEqual(sorted(json_load(store_dir / "store.json")["objects"]["ProductVariant"]),
+                             ["woo:1", "woo:4"])
+            self.assertFalse(client.mutations)
+
+    def test_a_loaded_row_is_never_a_candidate_even_when_it_is_missing_on_the_store(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target, _client, _dir = self._target(tmp, live=set())
+            plan = target.stale_variant_plan({"woo:1", "woo:2", "woo:3", "woo:4"})
+            self.assertEqual(plan["drop"], [])
+            self.assertEqual(plan["candidates"], 0)
+
+    def test_the_scope_leaves_products_this_run_did_not_touch_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target, _client, _dir = self._target(tmp)
+            plan = target.stale_variant_plan({"woo:1"}, product_keys={"other-product"})
+            self.assertEqual(plan["candidates"], 0)
+            self.assertEqual(plan["drop"], [])
+
+    def test_finish_prunes_the_ledger_and_reports_the_live_held_variant(self):
+        """The self-healing path: a delta run whose transform no longer produces
+        the held variants leaves the ledger in step with the store."""
+        import loader
+        import shopify_target
+        from common import checksum
+        with tempfile.TemporaryDirectory() as tmp:
+            target, client, store_dir = self._target(tmp)
+            # The ledger already holds exactly what this run loads, so the
+            # upsert is `unchanged` and costs no API call: only the prune talks
+            # to the store.
+            payload = {"product_handle": "p1", "sku": "A-1",
+                       "source": {"woo_id": 1, "woo_type": "product_variation"}}
+            row = target.state["objects"]["ProductVariant"]["woo:1"]
+            row["payload"], row["checksum"] = payload, checksum(payload)
+            records = {"variants": [dict(payload, held=False)]}
+            self.assertIsInstance(target, shopify_target.ShopifyAdminTarget)
+            exc = ExceptionCollector()
+            loader.load(records, target, exc, only_types=["variants"])
+
+            self.assertEqual(sorted(target.state["objects"]["ProductVariant"]),
+                             ["woo:1", "woo:4"])
+            self.assertEqual(sorted(target.state["objects"]["InventoryItem"]), ["woo:1"])
+            self.assertFalse(client.mutations)
+            held = [r for r in exc.rows if r["code"] == "variant_live_but_held"]
+            self.assertEqual([r["record"]["ref"] for r in held], ["woo:4"])
+            self.assertEqual(held[0]["retry_status"], "needs-decision")
+            notices = json_load(store_dir / "failures.json")["notices"]
+            self.assertEqual([n["key"] for n in notices], ["woo:4"])
+
+
+
 if __name__ == "__main__":
     unittest.main()
